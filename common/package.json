@@ -1,0 +1,20 @@
+{
+  "name": "common",
+  "version": "1.0.0",
+  "type": "module",
+  "private": true,
+  "main": "./es6/index.js",
+  "types": "./es6/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./es6/index.d.ts",
+      "default": "./es6/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -p ."
+  },
+  "devDependencies": {
+    "typescript": "^5.5.0"
+  }
+}
