@@ -1,6 +1,5 @@
-import { motion, AnimatePresence, useAnimation } from "framer-motion";
-import { HandCard } from "./Hand";
-import { PlayerId } from "./Hand";
+import { motion } from "framer-motion";
+import { HandCard, PlayerId, parseCard } from "./Hand";
 
 export function TrickCard({
   spot,
@@ -40,24 +39,31 @@ export function TrickCard({
       transition={{ type: "spring", stiffness: 520, damping: 26 }}
     >
       <div className="absolute top-2 left-2 text-left leading-none">
-        <div
-          className={`text-base font-semibold ${
-            card.suit === "♥" || card.suit === "♦"
-              ? "text-red-600"
-              : "text-black"
-          }`}
-        >
-          {card.rank}
-        </div>
-        <div
-          className={`text-base ${
-            card.suit === "♥" || card.suit === "♦"
-              ? "text-red-600"
-              : "text-black"
-          }`}
-        >
-          {card.suit}
-        </div>
+        {(() => {
+          const p = parseCard(card.code);
+          return (
+            <>
+              <div
+                className={`text-base font-semibold ${
+                  p.suit === "♥" || p.suit === "♦"
+                    ? "text-red-600"
+                    : "text-black"
+                }`}
+              >
+                {p.rank}
+              </div>
+              <div
+                className={`text-base ${
+                  p.suit === "♥" || p.suit === "♦"
+                    ? "text-red-600"
+                    : "text-black"
+                }`}
+              >
+                {p.suit}
+              </div>
+            </>
+          );
+        })()}
       </div>
     </motion.div>
   );

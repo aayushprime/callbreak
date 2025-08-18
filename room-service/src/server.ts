@@ -152,6 +152,7 @@ export class ServerController {
 
 	private setupRoomListeners(room: Room): void {
 		room.on('broadcast', (scope: 'room' | 'game', type: string, payload: any) => {
+			console.log('Broadcast server');
 			const message: ServerMessage = { scope, type, payload };
 			const stringifiedMessage = JSON.stringify(message);
 
@@ -170,6 +171,14 @@ export class ServerController {
 			const conn = this.connectionMap.get(playerId);
 			if (conn) {
 				conn.send(stringifiedMessage);
+			}
+		});
+
+		room.on('close', (playerId: string, reason: string) => {
+			const conn = this.connectionMap.get(playerId);
+			if (conn) {
+				conn.send(JSON.stringify({ type: 'error', message: reason }));
+				conn.end(4002, reason);
 			}
 		});
 	}

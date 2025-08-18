@@ -46,7 +46,6 @@ export function LobbyScreen() {
   useEffect(() => {
     if (!room) return;
     const unsubscribe = room.subscribe((event, ack) => {
-      console.log("Event received", event);
       if (event.type === "welcome") {
         ack();
         console.log(event.payload);
@@ -84,6 +83,9 @@ export function LobbyScreen() {
             country: event.payload.country,
           },
         ]);
+      } else if (event.type === "gameStarted") {
+        ack();
+        setScene("game");
       } else if (event.type === "status") {
         ack();
         setStatus(event.payload);
@@ -97,7 +99,6 @@ export function LobbyScreen() {
 
   const handleLeave = () => {
     room?.disconnect();
-    setScene("menu");
     router.push("/");
   };
 
@@ -128,19 +129,19 @@ export function LobbyScreen() {
               key={player.id}
               className={`flex flex-col items-center p-4 rounded-xl shadow-md transition-transform transform hover:scale-105 ${
                 player.id === host
-                  ? "bg-yellow-100 border-2 border-yellow-400"
-                  : "bg-white"
+                  ? "bg-yellow-200/30 border-2 border-yellow-400"
+                  : "bg-white/10"
               }`}
             >
               <Profile size={80} name={player.name} picture={player.picture} />
               <div className="mt-6 flex flex-row gap-2">
                 {playerName === player.id && (
-                  <span className="text-xs bg-blue-400 px-2 py-0.5 rounded-full font-bold">
+                  <span className="text-xs bg-blue-500/50 text-white px-2 py-0.5 rounded-full font-bold">
                     YOU
                   </span>
                 )}
                 {player.id === host && (
-                  <span className="text-xs bg-yellow-400 px-2 py-0.5 rounded-full font-bold">
+                  <span className="text-xs bg-yellow-500/50 text-white px-2 py-0.5 rounded-full font-bold">
                     HOST
                   </span>
                 )}

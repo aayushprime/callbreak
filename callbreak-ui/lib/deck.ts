@@ -1,1 +1,2 @@
-import { Card, createStandardDeck } from "common";
+export type { Card } from "common";
+export { createStandardDeck } from "common";

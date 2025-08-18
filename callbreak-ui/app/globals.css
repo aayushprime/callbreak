@@ -22,10 +22,11 @@
 html,
 body {
   overflow: hidden;
+  height: 100%;
 }
 
 body {
-  background: radial-gradient(circle farthest-side, #a8e063, #56ab2f);
+  background: #276749;
   color: var(--foreground);
   font-family: 'worksans';
 }

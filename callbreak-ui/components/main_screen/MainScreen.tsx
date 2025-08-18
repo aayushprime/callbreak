@@ -118,7 +118,7 @@ export function MainScreen() {
 
   return (
     <div
-      className="main-scene flex flex-col items-center justify-center h-full "
+      className="main-scene flex flex-col items-center justify-center h-full bg-green-800 text-white"
       ref={containerRef}
     >
       <div className="flex flex-row absolute left-0 top-2">
@@ -159,7 +159,7 @@ export function MainScreen() {
             ref={inputRef}
             type="text"
             placeholder="G-123456"
-            className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-400 focus:border-green-400 transition"
+            className="w-full px-4 py-3 border border-gray-500 bg-gray-700 text-white rounded-lg focus:outline-none focus:ring-2 focus:ring-green-400 focus:border-green-400 transition"
             value={roomCode}
             onChange={(e) => setRoomCode(e.target.value)}
             disabled={status === "connecting"}

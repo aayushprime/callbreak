@@ -14,7 +14,11 @@ export class Room extends EventEmitter {
 	private game: Game | null = null;
 	private isActive: boolean = false; // Is a game currently running?
 
-	constructor(public readonly id: string, private readonly gameFactory: GameFactory, readonly onEmpty: () => void) {
+	constructor(
+		public readonly id: string,
+		private readonly gameFactory: GameFactory,
+		readonly onEmpty: () => void,
+	) {
 		super();
 	}
 
@@ -37,12 +41,13 @@ export class Room extends EventEmitter {
 			// SECURITY: Only the host can start the game.
 			if (player.id !== this.hostId) return;
 			if (this.isActive) {
-				this.emit('send', 'room', player.id, 'error', { message: 'A game is already in progress.' });
+				this.emit('close', player.id, 'A game is already in progress.');
+
 				return;
 			}
 
 			const game = this.gameFactory(this.players);
-			const error = game.tryStart(false);
+			const error = game.allowStart();
 
 			if (error) {
 				this.emit('send', 'room', player.id, 'error', { message: error });
@@ -50,8 +55,10 @@ export class Room extends EventEmitter {
 			}
 			this.game = game;
 			this.setupGameListeners();
-			this.isActive = true;
+
 			this.emit('broadcast', 'room', 'gameStarted', {});
+			this.game.start();
+			this.isActive = true;
 		} else if (message.type === 'playAgain') {
 			if (player.id !== this.hostId) return;
 			this.handleLobbyMessage(player, { scope: 'room', type: 'startGame', payload: {} });
@@ -60,7 +67,8 @@ export class Room extends EventEmitter {
 
 	public join(player: Player): void {
 		if (this.isActive) {
-			this.emit('send', 'room', player.id, 'error', { message: 'A game is already in progress.' });
+			this.emit('close', player.id, 'A game is already in progress.');
+			// this.emit('send', 'room', player.id, 'error', { message: 'A game is already in progress.' });
 			return;
 		}
 		// Announce to others
@@ -77,6 +85,16 @@ export class Room extends EventEmitter {
 			players: allPlayers,
 			hostId: this.hostId,
 		});
+
+		if (!player.isBot) {
+			// join 3 bots
+			while (this.players.size < 4) {
+				const botId = `bot-${this.players.size + 1}`;
+				const bot = new Player(botId, `Bot ${this.players.size + 1}`, 'US');
+				bot.isBot = true;
+				this.join(bot);
+			}
+		}
 	}
 
 	public leave(playerId: string): void {
@@ -104,9 +122,8 @@ export class Room extends EventEmitter {
 	private setupGameListeners(): void {
 		if (!this.game) return;
 
-		// The Room should not know about game message names; the game emits
-		// only two events: 'broadcast' and 'send', and the Room forwards them.
 		this.game.on('broadcast', (type: string, payload: any) => {
+			console.log('Broadcasting,', type, payload);
 			this.emit('broadcast', 'game', type, payload);
 		});
 

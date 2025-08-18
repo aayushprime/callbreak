@@ -26,7 +26,7 @@ type GameContextType = {
 const GameContext = createContext<GameContextType | undefined>(undefined);
 
 export function GameProvider({ children }: { children: ReactNode }) {
-  const [scene, setScene] = useState<keyof typeof sceneSwitch>("game");
+  const [scene, setScene] = useState<keyof typeof sceneSwitch>("menu");
 
   const pathname = usePathname();
 

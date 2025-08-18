@@ -9,7 +9,8 @@ export abstract class Game extends EventEmitter {
 		super();
 	}
 
-	public abstract tryStart(restart: boolean): string | null;
+	public abstract allowStart(): null | string;
+	public abstract start(): void;
 	public abstract onMessage(player: Player, message: ClientMessage): void;
 	public abstract onDisconnect(player: Player): void;
 	public abstract onReconnect(player: Player): void;
@@ -39,23 +40,24 @@ export class CallbreakGame extends Game {
 		}
 	}
 
-	public tryStart(restart = false): string | null {
+	public allowStart(): null | string {
 		if (this.players.size !== 4) {
 			return '4 players required.';
 		}
+		return null;
+	}
 
+	public start(): void {
 		const players = Array.from(this.players.values()).map((p) => ({ id: p.id }));
 		this.state = new CallbreakState(players);
 		this.state.newRound();
 
-		// announce and push initial state
+		console.log('Snapshot is ', this.snapshot());
 		this.emit('broadcast', 'gameStart', this.snapshot());
-		this.emit('broadcast', 'gameState', this.snapshot());
 
 		// start first turn
 		this.notifyTurn();
 		this.startTurnTimer();
-		return null;
 	}
 
 	public onMessage(player: Player, message: ClientMessage<any>): void {

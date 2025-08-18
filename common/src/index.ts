@@ -1,3 +1,3 @@
-export * from "./cards";
-export * from "./logic";
-export * from "./state";
+export * from "./cards.js";
+export * from "./logic.js";
+export * from "./state.js";

@@ -3,6 +3,7 @@ export class Player {
 	// without it being part of the core Player identity.
 	// It's managed by the Network Layer.
 	public connection: any | null = null;
+	public isBot: boolean = false;
 
 	constructor(
 		public readonly id: string,
