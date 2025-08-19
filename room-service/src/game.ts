@@ -33,6 +33,7 @@ export class CallbreakGame extends Game {
 	}
 
 	public onReconnect(player: Player): void {
+		// TODO: reconnect player flow test
 		this.disconnected.delete(player.id);
 		this.emit('broadcast', 'gameState', this.snapshot());
 		if (this.currentPlayerId() === player.id) {
@@ -52,8 +53,10 @@ export class CallbreakGame extends Game {
 		this.state = new CallbreakState(players);
 		this.state.newRound();
 
-		console.log('Snapshot is ', this.snapshot());
-		this.emit('broadcast', 'gameStart', this.snapshot());
+		for (const p of this.players.keys()) {
+			const player = this.players.get(p)!;
+			this.emit('send', player.id, 'gameState', this.snapshot(player.id));
+		}
 
 		// start first turn
 		this.notifyTurn();
@@ -61,6 +64,7 @@ export class CallbreakGame extends Game {
 	}
 
 	public onMessage(player: Player, message: ClientMessage<any>): void {
+		console.log(`CallbreakGame received message from ${player.id}:`, message);
 		try {
 			switch (message.type) {
 				case 'bid': {
@@ -70,7 +74,6 @@ export class CallbreakGame extends Game {
 
 					this.state.submitBid(player.id, bid);
 					this.emit('broadcast', 'playerBid', { playerId: player.id, bid });
-					this.emit('broadcast', 'gameState', this.snapshot());
 
 					// If bidding finished, playing starts, otherwise next bidder
 					this.notifyTurn();
@@ -125,9 +128,21 @@ export class CallbreakGame extends Game {
 	}
 
 	// --- helpers ---
-	private snapshot() {
+	private snapshot(playerId?: string) {
 		// Return a JSON-serializable snapshot. Convert Maps to plain objects.
 		const mapToObj = (m: Map<string, any>) => Object.fromEntries(m.entries());
+		if (playerId) {
+			// Return only the state relevant to a specific player
+			return {
+				players: this.state.players.map((p) => p.id),
+				you: playerId,
+				playerCards: this.state.playerCards[playerId],
+				turn: this.state.turn,
+				phase: this.state.phase,
+				bids: this.state.bids.get(playerId),
+			};
+		}
+
 		return {
 			players: this.state.players,
 			playerCards: this.state.playerCards,
@@ -164,9 +179,7 @@ export class CallbreakGame extends Game {
 
 		const playerId = this.currentPlayerId();
 
-		// Send the timer information ONCE to the client.
-		// The client is now responsible for displaying the countdown.
-		this.emit('send', playerId, 'turnTimer', { msLeft: this.remainingTimeMs() });
+		this.emit('broadcast', 'turnTimer', { playerId: playerId, msLeft: this.remainingTimeMs() });
 
 		// The server's setTimeout remains as the authoritative enforcer of the turn limit.
 		this.timeoutHandle = setTimeout(() => {

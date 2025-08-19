@@ -1,12 +1,10 @@
-import uWS, { TemplatedApp, WebSocket } from 'uwebsockets.js';
-
-import { GameFactory } from './lobby.js';
+import uWS, { WebSocket } from 'uwebsockets.js';
+import { GameFactory } from './room.js';
 import { Player } from './player.js';
 import { CallbreakGame } from './game.js';
-import { Room } from './lobby.js';
+import { Room } from './room.js';
 import { ServerMessage, ClientMessage } from './message.js';
 
-// Define the shape of the data passed from upgrade to the open event.
 interface UserData {
 	playerId: string | null;
 	roomId: string | null;
@@ -14,13 +12,11 @@ interface UserData {
 	noCreate: boolean;
 }
 
-// Define the shape of the data we attach to the WebSocket after connection.
 interface WebSocketAttachment {
 	player: Player;
 	room: Room;
 }
 
-// Combine the WebSocket type with our custom attachment for cleaner casting.
 type CustomWebSocket = WebSocket<UserData> & { attachment: WebSocketAttachment };
 
 class RoomManager {
@@ -152,7 +148,6 @@ export class ServerController {
 
 	private setupRoomListeners(room: Room): void {
 		room.on('broadcast', (scope: 'room' | 'game', type: string, payload: any) => {
-			console.log('Broadcast server');
 			const message: ServerMessage = { scope, type, payload };
 			const stringifiedMessage = JSON.stringify(message);
 

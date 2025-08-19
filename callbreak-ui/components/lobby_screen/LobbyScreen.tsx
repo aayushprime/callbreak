@@ -2,7 +2,7 @@
 import { Button } from "@/components/ui/Button";
 import { useGame } from "@/contexts/GameContext";
 import { Popup } from "../ui/Popup";
-import { Profile } from "@/components/game_screen/Profile";
+import { LobbyProfile } from "./LobbyProfile";
 import { RoomCodeBadge } from "./RoomCodeBadge";
 import { Room } from "@/lib/room";
 import { useRoom } from "@/contexts/RoomContext";
@@ -28,6 +28,7 @@ export function LobbyScreen() {
   const [playerName] = usePlayerName();
   const router = useRouter();
   const pathname = usePathname();
+  const [popupTitle, setPopupTitle] = useState("Room not found.");
 
   useEffect(() => {
     if (room) return;
@@ -57,6 +58,10 @@ export function LobbyScreen() {
       } else if (event.type === "error") {
         if (event.payload?.message === "Room not found") {
           ack();
+          setPopupOpen(true);
+        } else if (event.payload.message === "A game is already in progress.") {
+          ack();
+          setPopupTitle("The game has already started.");
           setPopupOpen(true);
         } else if (event.payload.message === "4 players required.") {
           ack();
@@ -90,7 +95,7 @@ export function LobbyScreen() {
         ack();
         setStatus(event.payload);
       } else {
-        ack();
+        // ack();
         console.log("[Lobby] Unhandled event:", event);
       }
     });
@@ -133,7 +138,11 @@ export function LobbyScreen() {
                   : "bg-white/10"
               }`}
             >
-              <Profile size={80} name={player.name} picture={player.picture} />
+              <LobbyProfile
+                size={80}
+                name={player.name}
+                picture={player.picture}
+              />
               <div className="mt-6 flex flex-row gap-2">
                 {playerName === player.id && (
                   <span className="text-xs bg-blue-500/50 text-white px-2 py-0.5 rounded-full font-bold">
@@ -158,7 +167,7 @@ export function LobbyScreen() {
         <div>Waiting for host to start the game...</div>
       )}
 
-      <Popup isOpen={popupOpen} title="Room doesn't exist.">
+      <Popup isOpen={popupOpen} title={popupTitle}>
         <div className="flex flex-col gap-4">
           <div className="mt-6 flex flex-col items-center gap-4">
             <div className="flex gap-4">

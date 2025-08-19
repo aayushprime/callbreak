@@ -2,9 +2,8 @@ import { Player } from './player.js';
 import { ClientMessage } from './message.js';
 import { EventEmitter } from 'node:events';
 import { Game } from './game.js';
+import { Bot } from './bot.js';
 
-// A factory function to create game instances.
-// This allows the Room to be agnostic of specific game types.
 export type GameFactory = (players: Map<string, Player>) => Game;
 
 export class Room extends EventEmitter {
@@ -13,6 +12,7 @@ export class Room extends EventEmitter {
 
 	private game: Game | null = null;
 	private isActive: boolean = false; // Is a game currently running?
+	private bots: Record<string, Bot> = {};
 
 	constructor(
 		public readonly id: string,
@@ -22,16 +22,12 @@ export class Room extends EventEmitter {
 		super();
 	}
 
-	// --- Message Routing ---
 	public handleMessage(playerId: string, message: ClientMessage): void {
 		const player = this.players.get(playerId);
-		if (!player) return; // Should not happen
-
+		if (!player) return;
 		if (message.scope === 'game' && this.isActive && this.game) {
-			// Game is running, delegate game-related messages
 			this.game.onMessage(player, message);
 		} else if (message.scope === 'room') {
-			// Not in an active game, handle lobby-related messages
 			this.handleLobbyMessage(player, message);
 		}
 	}
@@ -42,7 +38,6 @@ export class Room extends EventEmitter {
 			if (player.id !== this.hostId) return;
 			if (this.isActive) {
 				this.emit('close', player.id, 'A game is already in progress.');
-
 				return;
 			}
 
@@ -57,8 +52,9 @@ export class Room extends EventEmitter {
 			this.setupGameListeners();
 
 			this.emit('broadcast', 'room', 'gameStarted', {});
-			this.game.start();
+
 			this.isActive = true;
+			this.game.start();
 		} else if (message.type === 'playAgain') {
 			if (player.id !== this.hostId) return;
 			this.handleLobbyMessage(player, { scope: 'room', type: 'startGame', payload: {} });
@@ -79,7 +75,6 @@ export class Room extends EventEmitter {
 			this.hostId = player.id;
 		}
 
-		// Welcome the new player with the full room state
 		const allPlayers = Array.from(this.players.values()).map((p) => p.toSerializable());
 		this.emit('send', 'room', player.id, 'welcome', {
 			players: allPlayers,
@@ -90,7 +85,8 @@ export class Room extends EventEmitter {
 			// join 3 bots
 			while (this.players.size < 4) {
 				const botId = `bot-${this.players.size + 1}`;
-				const bot = new Player(botId, `Bot ${this.players.size + 1}`, 'US');
+				const bot = new Bot(this, botId, `Bot ${this.players.size + 1}`, 'US');
+				this.bots[bot.id] = bot;
 				bot.isBot = true;
 				this.join(bot);
 			}
@@ -122,26 +118,38 @@ export class Room extends EventEmitter {
 	private setupGameListeners(): void {
 		if (!this.game) return;
 
+		const emitBroadcast = (scope: string, type: string, payload: any) => this.emit('broadcast', scope, type, payload);
+
+		const emitSend = (scope: string, playerId: string, type: string, payload: any) => this.emit('send', scope, playerId, type, payload);
+
+		const bots = this.bots; // alias for readability
+
 		this.game.on('broadcast', (type: string, payload: any) => {
-			console.log('Broadcasting,', type, payload);
-			this.emit('broadcast', 'game', type, payload);
+			emitBroadcast('game', type, payload);
+			Object.values(bots).forEach((b) => b.onGameMessage({ type, payload }));
 		});
 
 		this.game.on('send', (playerId: string, type: string, payload: any) => {
-			this.emit('send', 'game', playerId, type, payload);
-		});
-
-		this.game.on('gameEnded', (reason) => {
-			this.isActive = false;
-			if (this.game) {
-				this.game.removeAllListeners();
-				this.game = null;
+			const bot = bots[playerId];
+			if (bot) {
+				bot.onGameMessage({ type, payload });
+			} else {
+				emitSend('game', playerId, type, payload);
 			}
-			this.emit('broadcast', 'room', 'gameEnded', { reason });
 		});
 
-		this.game.on('error', (player, message) => {
-			this.emit('send', 'game', player.id, 'error', { message });
+		this.game.on('gameEnded', (reason: string) => {
+			this.isActive = false;
+
+			this.game?.removeAllListeners();
+			this.game = null;
+
+			emitBroadcast('room', 'gameEnded', { reason });
+			Object.values(bots).forEach((b) => b.onGameMessage({ type: 'gameEnded', payload: { reason } }));
+		});
+
+		this.game.on('error', (player: { id: string }, message: string) => {
+			emitSend('game', player.id, 'error', { message });
 		});
 	}
 }

@@ -1,9 +1,11 @@
+"use client";
 import { GameProvider } from "@/contexts/GameContext";
 import { RoomProvider } from "@/contexts/RoomContext";
 import { SceneSwitch } from "@/components/SceneSwitch";
 import { ToastProvider } from "@/contexts/ToastContext";
+import dynamic from "next/dynamic";
 
-export default function App() {
+function App() {
   return (
     <GameProvider>
       <RoomProvider>
@@ -18,3 +20,5 @@ export default function App() {
     </GameProvider>
   );
 }
+
+export default dynamic(() => Promise.resolve(App), { ssr: false });

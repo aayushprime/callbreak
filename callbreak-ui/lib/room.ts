@@ -116,6 +116,7 @@ export class Room {
         }
       } catch (e) {
         console.error("failed to parse message", event.data);
+        console.error("Error", e);
       }
     };
 
@@ -158,6 +159,16 @@ export class Room {
       this.connection.send(JSON.stringify({ type: message, scope: "room" }));
     } else {
       console.warn("Cannot send message, WebSocket not connected.");
+    }
+  }
+
+  sendGameMessage(message: "bid" | "playCard", payload: any) {
+    if (this.connection && this.connection.readyState === WebSocket.OPEN) {
+      this.connection.send(
+        JSON.stringify({ type: message, payload, scope: "game" })
+      );
+    } else {
+      console.warn("Cannot send game message, WebSocket not connected.");
     }
   }
 }

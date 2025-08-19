@@ -1,11 +1,13 @@
 "use client";
 
 import { CardsHand } from "./Hand";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useMemo, useCallback } from "react";
+import { createStandardDeck } from "common";
+import { Card } from "common";
 import { HandCard } from "./Hand";
 import { ProfileHandle, Profile } from "./Profile";
 import { motion } from "framer-motion";
-import { Card, createStandardDeck } from "common";
+import { Card as CardComponent } from "../ui/Card";
 import { Button } from "../ui/Button";
 import { useWindowSize } from "@/hooks/useWindowSize";
 import { BidPopup } from "./BidPopup";
@@ -19,6 +21,9 @@ type TrickCard = {
   card: Card;
   playedBy: PlayerPosition;
   startPosition: { x: number; y: number };
+  collected?: boolean;
+  collectedTo?: PlayerPosition;
+  collectedPosition?: { x: number; y: number };
 };
 
 export function GameScreen() {
@@ -30,11 +35,11 @@ export function GameScreen() {
 
   const [hand, setHand] = useState<HandCard[]>([]);
   const [trickCards, setTrickCards] = useState<TrickCard[]>([]);
+
   const [booksOpen, setBooksOpen] = useState(false);
   const [bidPopupOpen, setBidPopupOpen] = useState(false);
 
   const leftProfileRef = useRef<ProfileHandle>(null!);
-
   const topProfileRef = useRef<ProfileHandle>(null!);
   const rightProfileRef = useRef<ProfileHandle>(null!);
   const bottomPlayerRef = useRef<HTMLDivElement>(null!);
@@ -42,71 +47,210 @@ export function GameScreen() {
   const trickAreaRef = useRef<HTMLDivElement>(null);
   const { room } = useRoom();
   const { addToast } = useToast();
+  const [status, setStatus] = useState<string>("");
+
+  const [selfId, setSelfId] = useState<string>("");
+  const selfIdRef = useRef<string>("");
+  const [profileNames, setProfileNames] = useState(["right", "top", "left"]);
+  const [playersList, setPlayersList] = useState<string[]>([]);
+  const [playersMap, setPlayersMap] = useState<{ [id: string]: number }>({});
+  const [bids, setBids] = useState<{ [id: string]: number }>({});
+  const [points, setPoints] = useState<{ [id: string]: number }>({});
 
   useEffect(() => {
     if (!room) return;
     const unsubscribe = room.subscribe((event, ack) => {
-      if (event.type === "close") {
-        addToast("Connection broken.");
+      if (event.type === "gameState") {
         ack();
+        const players: string[] = event.payload.players;
+        const you = event.payload.you;
+        console.log("Setting self id ", you);
+        setSelfId(you);
+        selfIdRef.current = you;
+
+        const idx = players.findIndex((el) => el === you);
+        const order = players.slice(idx + 1).concat(players.slice(0, idx));
+        setProfileNames(order);
+
+        // build lookup for quick resolution
+        const map: { [id: string]: number } = {};
+        order.forEach((pid, i) => {
+          map[pid] = i;
+        });
+        setPlayersMap(map);
+        setPlayersList(players);
+
+        setHand(
+          event.payload.playerCards.map((code: string, i: number) => ({
+            code,
+            createdAt: Date.now(),
+            uid: String(i),
+            fromDeck: true,
+          }))
+        );
+      } else if (event.type === "playerBid") {
+        ack();
+        console.log("Player bid received", event, selfIdRef.current);
+        const { playerId, bid } = event.payload;
+        setBids((prev) => ({
+          ...prev,
+          [playerId]: bid,
+        }));
+        // If the bid received is for self, close the bid popup
+        if (playerId === selfIdRef.current) {
+          setBidPopupOpen(false);
+        }
+      } else if (event.type === "getBid") {
+        ack();
+        setBidPopupOpen(true);
+      } else if (event.type === "close") {
+        ack();
+        addToast("Connection broken.");
       } else if (event.type === "error") {
         ack();
         addToast(event.payload?.message);
       } else if (event.type === "status") {
         ack();
         setStatus(event.payload);
+      } else if (event.type === "turnTimer") {
+        // payload: { playerId, msLeft }
+        ack();
+        const { playerId, msLeft, totalMs } = event.payload || {};
+        // ignore invalid payloads
+        if (!playerId) return;
+
+        // If this event is identical to the last one, ignore to avoid double-handling
+        if (
+          lastTurnRef.current?.playerId === playerId &&
+          typeof lastTurnRef.current?.msLeft === "number" &&
+          typeof msLeft === "number" &&
+          Math.abs((lastTurnRef.current.msLeft ?? 0) - msLeft) < 50
+        ) {
+          // tiny delta, likely duplicate message — ignore
+          return;
+        }
+        // On any incoming turnTimer, clear timers for all other players
+        // since only one player's turn can be active at a time.
+        try {
+          // stop timers for other profiles
+          // right
+          // @ts-ignore
+          rightProfileRef.current?.stopTurnTimer?.();
+          // top
+          // @ts-ignore
+          topProfileRef.current?.stopTurnTimer?.();
+          // left
+          // @ts-ignore
+          leftProfileRef.current?.stopTurnTimer?.();
+        } catch (e) {
+          // ignore
+        }
+
+        // map index to position: 0 -> right, 1 -> top, 2 -> left, self -> bottom
+        // Prefer using the authoritative playersList from the latest gameState to
+        // avoid stale mapping caused by quick messages.
+        let idx: number = -1;
+        if (playersList.length > 0 && selfIdRef.current) {
+          if (playerId !== selfIdRef.current) {
+            const youIdx = playersList.findIndex(
+              (p) => p === selfIdRef.current
+            );
+            if (youIdx >= 0) {
+              const order = playersList
+                .slice(youIdx + 1)
+                .concat(playersList.slice(0, youIdx));
+              idx = order.findIndex((p) => p === playerId);
+            }
+          } else {
+            idx = -2; // signal self
+          }
+        } else {
+          // fallback to playersMap/profileNames
+          let candidate = playersMap[playerId];
+          if (typeof candidate !== "number")
+            candidate = profileNames.findIndex((p) => p === playerId);
+          idx = typeof candidate === "number" ? candidate : -1;
+        }
+        if (playerId === selfIdRef.current || idx === -2) {
+          // update local bottom bar via state
+          setSelfTimerMs(msLeft ?? 0);
+          if (typeof totalMs === "number") setSelfTimerTotalMs(totalMs);
+          setActiveTurnPlayer(playerId);
+          lastTurnRef.current = { playerId, msLeft };
+        } else if (typeof idx === "number" && idx >= 0) {
+          const pos: PlayerPosition =
+            idx === 0 ? "right" : idx === 1 ? "top" : "left";
+          const ref = getProfileRef(pos);
+          // use imperative handle if available
+          try {
+            // @ts-ignore
+            ref.current?.setTurnTimer?.(msLeft ?? 0, totalMs);
+          } catch (e) {
+            // ignore if profile doesn't expose it
+          }
+          // reset self timer if it's someone else's turn
+          if (playerId !== selfIdRef.current) {
+            setSelfTimerMs(0);
+            setSelfTimerTotalMs(0);
+          }
+          setActiveTurnPlayer(playerId);
+          lastTurnRef.current = { playerId, msLeft };
+        } else {
+          // couldn't map the playerId to a profile (maybe playersMap isn't ready)
+          console.warn("turnTimer for unknown playerId", playerId);
+        }
       } else {
         ack();
         console.log("[Lobby] Unhandled event:", event);
       }
     });
     return unsubscribe;
-  }, [room]);
+  }, [room, playersMap]);
 
-  // useEffect(() => {
-  //   const deck = createStandardDeck().splice(0, 13);
-  //   setHand(
-  //     deck.map((code, i) => ({
-  //       code,
-  //       createdAt: Date.now(),
-  //       uid: String(i),
-  //       fromDeck: true,
-  //     }))
-  //   );
-  // }, []);
+  // Self turn timer state (ms)
+  const [selfTimerMs, setSelfTimerMs] = useState<number>(0);
+  const [selfTimerTotalMs, setSelfTimerTotalMs] = useState<number>(0);
+  // Track active turn to prevent duplicate handling
+  const [activeTurnPlayer, setActiveTurnPlayer] = useState<string | null>(null);
+  const lastTurnRef = useRef<{ playerId?: string; msLeft?: number } | null>(
+    null
+  );
+  const playCard = useCallback(
+    (
+      card: Card,
+      player: PlayerPosition,
+      cardRef?: React.RefObject<HTMLDivElement | null>
+    ) => {
+      console.log(`Playing card ${card} by ${player}`);
+      if (!gameScreenRef.current) return;
+      const gameScreenRect = gameScreenRef.current.getBoundingClientRect();
 
-  const playCard = (
-    card: Card,
-    player: PlayerPosition,
-    cardRef?: React.RefObject<HTMLDivElement>
-  ) => {
-    if (!gameScreenRef.current) return;
-    const gameScreenRect = gameScreenRef.current.getBoundingClientRect();
+      let startPosition = { x: 0, y: 0 };
+      const playerRef = getProfileRef(player);
 
-    let startPosition = { x: 0, y: 0 };
-    const playerRef = getPlayerStartRef(player);
+      if (cardRef?.current) {
+        const rect = cardRef.current.getBoundingClientRect();
+        startPosition = {
+          x: rect.x - gameScreenRect.x,
+          y: rect.y - gameScreenRect.y,
+        };
+      } else if (playerRef.current) {
+        const rect = playerRef.current.getBoundingClientRect()!;
+        startPosition = {
+          x: rect.x + rect.width / 2 - gameScreenRect.x - cardWidth / 2,
+          y: rect.y + rect.height / 2 - gameScreenRect.y - cardHeight / 2,
+        };
+      }
 
-    if (cardRef?.current) {
-      const rect = cardRef.current.getBoundingClientRect();
-      startPosition = {
-        x: rect.x - gameScreenRect.x,
-        y: rect.y - gameScreenRect.y,
-      };
-    } else if (playerRef.current) {
-      const rect = playerRef.current.getBoundingClientRect()!;
-      startPosition = {
-        x: rect.x + rect.width / 2 - gameScreenRect.x - cardWidth / 2,
-        y: rect.y + rect.height / 2 - gameScreenRect.y - cardHeight / 2,
-      };
-    }
+      setTrickCards((prev) => [
+        ...prev,
+        { card, playedBy: player, startPosition },
+      ]);
+    },
+    [cardWidth, cardHeight]
+  );
 
-    setTrickCards((prev) => [
-      ...prev,
-      { card, playedBy: player, startPosition },
-    ]);
-  };
-
-  const getPlayerStartRef = (player: PlayerPosition) => {
+  const getProfileRef = (player: PlayerPosition) => {
     switch (player) {
       case "left":
         return leftProfileRef;
@@ -117,6 +261,73 @@ export function GameScreen() {
       case "bottom":
       default:
         return bottomPlayerRef;
+    }
+  };
+
+  // Debug helper: simulate incoming turnTimer events for a given playerId
+  const simulateTurnTimer = (
+    playerId: string,
+    msLeft = 10000,
+    totalMs = 10000
+  ) => {
+    // Reuse the same handling logic as the real event path by constructing a fake payload
+    // and running the same mapping/forwarding code path inline here.
+    // Stop timers for other profiles
+    try {
+      // @ts-ignore
+      rightProfileRef.current?.stopTurnTimer?.();
+      // @ts-ignore
+      topProfileRef.current?.stopTurnTimer?.();
+      // @ts-ignore
+      leftProfileRef.current?.stopTurnTimer?.();
+    } catch (e) {
+      // ignore
+    }
+
+    // map index to position: 0 -> right, 1 -> top, 2 -> left, self -> bottom
+    let idx: number = -1;
+    if (playersList.length > 0 && selfIdRef.current) {
+      if (playerId !== selfIdRef.current) {
+        const youIdx = playersList.findIndex((p) => p === selfIdRef.current);
+        if (youIdx >= 0) {
+          const order = playersList
+            .slice(youIdx + 1)
+            .concat(playersList.slice(0, youIdx));
+          idx = order.findIndex((p) => p === playerId);
+        }
+      } else {
+        idx = -2; // self
+      }
+    } else {
+      let candidate = playersMap[playerId];
+      if (typeof candidate !== "number")
+        candidate = profileNames.findIndex((p) => p === playerId);
+      idx = typeof candidate === "number" ? candidate : -1;
+    }
+
+    if (playerId === selfIdRef.current || idx === -2) {
+      setSelfTimerMs(msLeft ?? 0);
+      if (typeof totalMs === "number") setSelfTimerTotalMs(totalMs);
+      setActiveTurnPlayer(playerId);
+      lastTurnRef.current = { playerId, msLeft };
+    } else if (typeof idx === "number" && idx >= 0) {
+      const pos: PlayerPosition =
+        idx === 0 ? "right" : idx === 1 ? "top" : "left";
+      const ref = getProfileRef(pos);
+      try {
+        // @ts-ignore
+        ref.current?.setTurnTimer?.(msLeft ?? 0, totalMs);
+      } catch (e) {
+        // ignore
+      }
+      if (playerId !== selfIdRef.current) {
+        setSelfTimerMs(0);
+        setSelfTimerTotalMs(0);
+      }
+      setActiveTurnPlayer(playerId);
+      lastTurnRef.current = { playerId, msLeft };
+    } else {
+      console.warn("simulateTurnTimer: unknown playerId", playerId);
     }
   };
 
@@ -152,46 +363,56 @@ export function GameScreen() {
     console.log("trick won");
   };
 
-  const collect = (winner: PlayerPosition) => {
-    const winnerRef = getPlayerStartRef(winner);
-    if (!winnerRef.current || !gameScreenRef.current) return;
-
+  const getPlayerCenterPosition = (player: PlayerPosition) => {
+    const winnerRef = getProfileRef(player);
+    if (!winnerRef.current || !gameScreenRef.current) return { x: 0, y: 0 };
     const gameScreenRect = gameScreenRef.current.getBoundingClientRect();
     const winnerRect = winnerRef.current.getBoundingClientRect()!;
-    const winnerCenter = {
-      x: winnerRect.x + winnerRect.width / 2 - gameScreenRect.x,
-      y: winnerRect.y + winnerRect.height / 2 - gameScreenRect.y,
+    return {
+      x: winnerRect.x + winnerRect.width / 2 - gameScreenRect.x - cardWidth / 2,
+      y:
+        winnerRect.y +
+        winnerRect.height / 2 -
+        gameScreenRect.y -
+        cardHeight / 2,
     };
+  };
 
-    const newTrickCards = trickCards.map((trickCard) => ({
-      ...trickCard,
-      playedBy: "winner" as PlayerPosition,
-      startPosition: {
-        x: winnerCenter.x - cardWidth / 2,
-        y: winnerCenter.y - cardHeight / 2,
-      },
-    }));
+  const collectTricks = (winner: PlayerPosition) => {
+    if (trickCards.length === 0) return;
+    const winnerPos = getPlayerCenterPosition(winner);
 
-    setTrickCards(newTrickCards);
+    setTrickCards((prev) =>
+      prev.map((tc) => ({
+        ...tc,
+        collected: true,
+        collectedTo: winner,
+        collectedPosition: winnerPos,
+      }))
+    );
 
+    // clear after the animation finishes
     setTimeout(() => {
       setTrickCards([]);
       onTrickWon();
-    }, 1000);
+    }, 600);
   };
 
-  useEffect(() => {
-    if (trickCards.length === 4) {
-      const winner: PlayerPosition = ["top", "right", "bottom", "left"][
-        Math.floor(Math.random() * 4)
-      ] as PlayerPosition;
-      console.log(`${winner} wins the trick!`);
+  const allowedCardsMemo = useMemo<Card[]>(() => ["AH"], []);
 
-      setTimeout(() => {
-        collect(winner);
-      }, 1000);
-    }
-  }, [trickCards, cardWidth, cardHeight]);
+  const handlePlay = useCallback(
+    (card: HandCard, cardRef?: React.RefObject<HTMLDivElement | null>) => {
+      setHand((prev) => prev.filter((h) => h.code !== card.code));
+      playCard(card.code, "bottom", cardRef);
+    },
+    [playCard]
+  );
+
+  // compute progress for self timer: grows towards the end
+  const selfProgress =
+    selfTimerTotalMs > 0
+      ? Math.min(1, Math.max(0, 1 - selfTimerMs / selfTimerTotalMs))
+      : 0;
 
   return (
     <div
@@ -201,21 +422,30 @@ export function GameScreen() {
       <div className="absolute top-1/3 text-4xl">Round 1</div>
       <Profile
         size={Math.min(width * 0.05, 80)}
-        ref={leftProfileRef}
-        className="absolute left-5 top-1/2 -translate-y-1/2"
-        name="Player 2"
+        ref={rightProfileRef}
+        className="absolute right-10 top-1/2 -translate-y-1/2"
+        name={profileNames[0]}
+        bid={bids[profileNames[0]]}
+        points={points[profileNames[0]] ?? 0}
+        showStats={true}
       />
       <Profile
         size={Math.min(width * 0.05, 80)}
         ref={topProfileRef}
         className="absolute top-5 left-1/2 -translate-x-1/2"
-        name="Player 3"
+        name={profileNames[1]}
+        bid={bids[profileNames[1]]}
+        points={points[profileNames[1]] ?? 0}
+        showStats={true}
       />
       <Profile
         size={Math.min(width * 0.05, 80)}
-        ref={rightProfileRef}
-        className="absolute right-5 top-1/2 -translate-y-1/2"
-        name="Player 4"
+        ref={leftProfileRef}
+        className="absolute left-10 top-1/2 -translate-y-1/2"
+        name={profileNames[2]}
+        bid={bids[profileNames[2]]}
+        points={points[profileNames[2]] ?? 0}
+        showStats={true}
       />
 
       <div
@@ -224,10 +454,13 @@ export function GameScreen() {
         style={{ width: cardWidth * 2, height: cardHeight * 2 }}
       />
 
-      {trickCards.map(({ card, playedBy, startPosition }, index) => {
+      {trickCards.map((tc, index) => {
+        const { card, playedBy, startPosition, collected, collectedPosition } =
+          tc;
+
         const endPosition =
-          playedBy === "winner"
-            ? startPosition
+          collected && collectedPosition
+            ? collectedPosition
             : getTrickCardPosition(playedBy);
 
         return (
@@ -250,8 +483,8 @@ export function GameScreen() {
             animate={{
               x: endPosition.x,
               y: endPosition.y,
-              scale: playedBy === "winner" ? 0 : 1,
-              opacity: playedBy === "winner" ? 0 : 1,
+              scale: collected ? 0 : 1,
+              opacity: collected ? 0 : 1,
               zIndex: index,
             }}
             exit={{
@@ -259,9 +492,8 @@ export function GameScreen() {
               opacity: 0,
             }}
             transition={{ duration: 0.5, ease: "easeOut" }}
-            className="rounded-md bg-gray-800 shadow-lg border border-gray-700 flex items-center justify-center"
           >
-            {card}
+            <CardComponent card={card} />
           </motion.div>
         );
       })}
@@ -273,29 +505,69 @@ export function GameScreen() {
         }`}
         style={{ height: cardHeight * 1.5 }}
       >
+        {/* Self bid/points display above the hand */}
+        <div className="absolute -top-12 left-1/2 -translate-x-1/2 flex gap-2 pointer-events-none">
+          <div className="bg-black/70 text-white text-sm px-3 py-1 rounded-md">
+            Bid: {bids[selfId] ?? "-"}
+          </div>
+          <div className="bg-black/70 text-white text-sm px-3 py-1 rounded-md">
+            Pts: {points[selfId] ?? 0}
+          </div>
+        </div>
         <CardsHand
           hand={hand}
           cardWidth={cardWidth}
           cardHeight={cardHeight}
-          onPlay={(card, cardRef) => {
-            setHand(hand.filter((h) => h.code !== card.code));
-            playCard(card.code, "bottom", cardRef);
-          }}
-          allowedCards={["AH"]}
+          onPlay={handlePlay}
+          allowedCards={allowedCardsMemo}
         />
+      </div>
+
+      {/* Bottom self-turn progress bar (grows as time runs out) */}
+      <div className="absolute left-0 right-0 bottom-0 pointer-events-none flex items-end justify-center">
+        <div className="w-full max-w-4xl px-6">
+          <div className="h-2 w-full bg-white/10 rounded-full overflow-hidden">
+            <div
+              className="h-full bg-emerald-400"
+              style={{
+                width: `${Math.round(selfProgress * 100)}%`,
+                transition: "width 120ms linear",
+              }}
+            />
+          </div>
+        </div>
       </div>
 
       {bidPopupOpen && (
         <BidPopup
           onBid={(bid) => {
-            console.log(bid);
-            setBidPopupOpen(false);
+            room?.sendGameMessage("bid", { bid });
           }}
         />
       )}
+
       {booksOpen && <Books onClose={() => setBooksOpen(false)} />}
       <div className="absolute top-0 right-0 p-4 flex flex-col gap-2">
         <Button title="Books" onClick={() => setBooksOpen(true)} />
+        <Button title="right" onClick={() => playCard("AC", "right")} />
+        <Button title="top" onClick={() => playCard("AC", "top")} />
+        <Button title="left" onClick={() => playCard("AC", "left")} />
+        {/* Debug: simulate turnTimer events */}
+        <div className="flex gap-2 items-center mt-2">
+          <Button
+            title="Sim: Self"
+            onClick={() =>
+              simulateTurnTimer(selfIdRef.current || selfId, 10000, 10000)
+            }
+          />
+          {playersList.map((pid) => (
+            <Button
+              key={pid}
+              title={`Sim: ${pid}`}
+              onClick={() => simulateTurnTimer(pid, 10000, 10000)}
+            />
+          ))}
+        </div>
       </div>
     </div>
   );

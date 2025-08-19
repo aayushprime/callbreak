@@ -26,7 +26,7 @@ body {
 }
 
 body {
-  background: #276749;
+  background: radial-gradient(circle farthest-side, #a8e063, #56ab2f);
   color: var(--foreground);
   font-family: 'worksans';
 }
