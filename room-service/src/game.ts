@@ -1,7 +1,11 @@
 import { EventEmitter } from 'node:events';
 import { Player } from './player.js';
 import { ClientMessage } from './message.js';
-import { CallbreakState, Card, getSuit, TRUMP_SUIT, getRankValue } from 'common';
+import { CallbreakState, Card, getSuit, TRUMP_SUIT, getRankValue, computeValidCards } from 'common';
+
+function delay(ms: number) {
+	return new Promise((resolve) => setTimeout(resolve, ms));
+}
 
 // --- Abstract Game Class ---
 export abstract class Game extends EventEmitter {
@@ -35,10 +39,14 @@ export class CallbreakGame extends Game {
 	public onReconnect(player: Player): void {
 		// TODO: reconnect player flow test
 		this.disconnected.delete(player.id);
-		this.emit('broadcast', 'gameState', this.snapshot());
 		if (this.currentPlayerId() === player.id) {
-			this.emit('send', player.id, 'turnTimer', { msLeft: this.remainingTimeMs() });
+			this.resyncPlayer(player.id);
 		}
+	}
+
+	private resyncPlayer(playerId: string) {
+		this.emit('send', playerId, 'gameState', this.snapshot(playerId));
+		this.emit('send', playerId, 'turnTimer', { msLeft: this.remainingTimeMs() });
 	}
 
 	public allowStart(): null | string {
@@ -53,17 +61,14 @@ export class CallbreakGame extends Game {
 		this.state = new CallbreakState(players);
 		this.state.newRound();
 
-		for (const p of this.players.keys()) {
-			const player = this.players.get(p)!;
-			this.emit('send', player.id, 'gameState', this.snapshot(player.id));
-		}
+		this.sendGameState();
 
 		// start first turn
 		this.notifyTurn();
 		this.startTurnTimer();
 	}
 
-	public onMessage(player: Player, message: ClientMessage<any>): void {
+	public async onMessage(player: Player, message: ClientMessage<any>): Promise<void> {
 		console.log(`CallbreakGame received message from ${player.id}:`, message);
 		try {
 			switch (message.type) {
@@ -87,18 +92,19 @@ export class CallbreakGame extends Game {
 
 					this.state.playCard(player.id, card);
 					this.emit('broadcast', 'playerCard', { playerId: player.id, card });
-					this.emit('broadcast', 'gameState', this.snapshot());
+					// this.emit('broadcast', 'gameState', this.snapshot());
 
 					// If a trick resolved, state may have advanced the turn and/or round
 					if (this.isPhase('round_over')) {
 						// Start next round automatically
+						await delay(2000);
 						this.state.newRound();
-						this.emit('broadcast', 'gameState', this.snapshot());
+						// this.emit('broadcast', 'gameState', this.snapshot());
 					}
 
 					if (this.isPhase('game_over')) {
 						this.clearTimers();
-						this.emit('broadcast', 'gameState', this.snapshot());
+						this.sendGameState();
 						this.emit('broadcast', 'gameEnded', { reason: 'completed' });
 						this.emit('ended', 'completed');
 						return;
@@ -114,6 +120,8 @@ export class CallbreakGame extends Game {
 			}
 		} catch (e: any) {
 			this.emit('error', player, e?.message ?? 'Invalid action');
+			// resync player
+			this.resyncPlayer(player.id);
 		}
 	}
 
@@ -128,35 +136,17 @@ export class CallbreakGame extends Game {
 	}
 
 	// --- helpers ---
-	private snapshot(playerId?: string) {
+	private snapshot(playerId: string) {
 		// Return a JSON-serializable snapshot. Convert Maps to plain objects.
 		const mapToObj = (m: Map<string, any>) => Object.fromEntries(m.entries());
-		if (playerId) {
-			// Return only the state relevant to a specific player
-			return {
-				players: this.state.players.map((p) => p.id),
-				you: playerId,
-				playerCards: this.state.playerCards[playerId],
-				turn: this.state.turn,
-				phase: this.state.phase,
-				bids: this.state.bids.get(playerId),
-			};
-		}
-
 		return {
-			players: this.state.players,
-			playerCards: this.state.playerCards,
+			players: this.state.players.map((p) => p.id),
+			you: playerId,
+			playerCards: this.state.playerCards[playerId],
 			turn: this.state.turn,
-			winner: this.state.winner,
-			roundNumber: this.state.roundNumber,
-			bids: mapToObj(this.state.bids),
-			points: mapToObj(this.state.points),
-			tricksWon: mapToObj(this.state.tricksWon),
 			phase: this.state.phase,
-			cardsHistory: this.state.cardsHistory,
+			bids: this.state.bids.get(playerId),
 			playedCards: this.state.playedCards,
-			trickLeadPlayerIndex: this.state.trickLeadPlayerIndex,
-			// For brevity, omit roundHistory Map conversions here
 		};
 	}
 
@@ -168,7 +158,9 @@ export class CallbreakGame extends Game {
 		if (this.state.phase === 'bidding') {
 			this.emit('send', this.currentPlayerId(), 'getBid', {});
 		} else if (this.state.phase === 'playing') {
-			this.emit('send', this.currentPlayerId(), 'getCard', {});
+			this.emit('send', this.currentPlayerId(), 'getCard', {
+				playedCards: this.state.playedCards,
+			});
 		}
 	}
 
@@ -194,23 +186,23 @@ export class CallbreakGame extends Game {
 				// Auto-bid minimum
 				this.state.submitBid(playerId, 1);
 				this.emit('broadcast', 'playerBid', { playerId, bid: 1 });
-				this.emit('broadcast', 'gameState', this.snapshot());
+				this.sendGameState();
 			} else if (this.isPhase('playing')) {
 				// Auto-play the first valid card
 				const hand = this.state.playerCards[playerId];
 				const validCard = this.pickRandomValidCard(playerId, hand);
 				this.state.playCard(playerId, validCard);
 				this.emit('broadcast', 'playerCard', { playerId, card: validCard });
-				this.emit('broadcast', 'gameState', this.snapshot());
+				this.sendGameState();
 			}
 
 			if (this.isPhase('round_over')) {
 				this.state.newRound();
-				this.emit('broadcast', 'gameState', this.snapshot());
+				this.sendGameState();
 			}
 			if (this.isPhase('game_over')) {
 				this.clearTimers();
-				this.emit('broadcast', 'gameState', this.snapshot());
+				this.sendGameState();
 				this.emit('broadcast', 'gameEnded', { reason: 'completed' });
 				this.emit('ended', 'completed');
 				return;
@@ -227,29 +219,12 @@ export class CallbreakGame extends Game {
 	}
 
 	private pickRandomValidCard(playerId: string, hand: Card[]): Card {
-		const candidates = this.computeValidCardsForHand(playerId, hand);
+		const candidates = computeValidCards(hand, this.state.playedCards);
 		const idx = Math.floor(Math.random() * candidates.length);
 		return candidates[idx];
 	}
 
-	private computeValidCardsForHand(playerId: string, hand: Card[]): Card[] {
-		const played = this.state.playedCards;
-		if (played.length === 0) return [...hand];
-		const leadingSuit = getSuit(played[0]);
-		const hasLeading = hand.some((c) => getSuit(c) === leadingSuit);
-		if (hasLeading) {
-			return hand.filter((c) => getSuit(c) === leadingSuit);
-		}
-		const hasTrump = hand.some((c) => getSuit(c) === TRUMP_SUIT);
-		if (hasTrump) {
-			const highestTrumpInTrick = played.filter((c) => getSuit(c) === TRUMP_SUIT).reduce((max, c) => Math.max(max, getRankValue(c)), 0);
-			const higherTrumps = hand.filter((c) => getSuit(c) === TRUMP_SUIT && getRankValue(c) > highestTrumpInTrick);
-			if (higherTrumps.length > 0) return higherTrumps;
-			return hand.filter((c) => getSuit(c) === TRUMP_SUIT);
-		}
-		return [...hand];
-	}
-
+	// computeValidCards is provided by common.logic
 	private remainingTimeMs(): number {
 		return Math.max(0, this.turnDeadlineMs - Date.now());
 	}
@@ -264,6 +239,13 @@ export class CallbreakGame extends Game {
 
 	private isPhase(phase: CallbreakState['phase']): boolean {
 		return (this.state as any).phase === phase;
+	}
+
+	private sendGameState() {
+		for (const p of this.players.keys()) {
+			const player = this.players.get(p)!;
+			this.emit('send', player.id, 'gameState', this.snapshot(player.id));
+		}
 	}
 }
 

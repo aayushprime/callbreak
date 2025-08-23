@@ -69,8 +69,6 @@ export const Profile = forwardRef<ProfileHandle, ProfileProps>(
       { card: CardType; targetX: number; targetY: number }[]
     >([]);
 
-    // Timer state (seconds remaining)
-    // Use internal state so the timer can be controlled via the imperative handle
     const [internalTotalTime, setInternalTotalTime] =
       useState<number>(totalTime);
     const [timeLeft, setTimeLeft] = useState<number>(turnTime);
@@ -163,25 +161,6 @@ export const Profile = forwardRef<ProfileHandle, ProfileProps>(
                 viewBox="0 0 100 100"
                 className="pointer-events-none absolute inset-0 w-full h-full"
               >
-                <defs>
-                  <pattern
-                    id={texId}
-                    patternUnits="userSpaceOnUse"
-                    width="20"
-                    height="20"
-                  >
-                    <image
-                      href="/logo.png"
-                      x="0"
-                      y="0"
-                      width="20"
-                      height="20"
-                      preserveAspectRatio="xMidYMid slice"
-                      className="tex-rotate"
-                    />
-                  </pattern>
-                </defs>
-
                 <circle
                   cx="50"
                   cy="50"

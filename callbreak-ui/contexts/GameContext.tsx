@@ -30,18 +30,6 @@ export function GameProvider({ children }: { children: ReactNode }) {
 
   const pathname = usePathname();
 
-  // useEffect(() => {
-  //   const pathSegments = pathname.split("/").filter(Boolean);
-  //   if (pathSegments.length === 1) {
-  //     const roomId = pathSegments[0];
-  //     if (roomId) {
-  //       setScene("lobby");
-  //     }
-  //   } else {
-  //     setScene("menu");
-  //   }
-  // }, [pathname, setScene]);
-
   return (
     <GameContext.Provider value={{ scene, setScene }}>
       {children}
