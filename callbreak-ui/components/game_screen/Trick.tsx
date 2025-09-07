@@ -1,112 +1,164 @@
-import { motion } from "framer-motion";
+import { motion, AnimationDefinition } from "framer-motion";
 import { Card as CardType } from "common";
 import { Card } from "../ui/Card";
-import { useEffect, useState } from "react";
+import { useState, useLayoutEffect, useRef } from "react";
 
 type TrickProps = {
   playedCards: { player: string; card: CardType }[];
-  winnerId?: string | null;
-  profileRefs: React.MutableRefObject<Record<string, HTMLDivElement | null>>;
-  trickContainerRef: React.RefObject<HTMLDivElement | null>;
+  winningPosition: { x: number; y: number } | null;
+  profilePositions: Record<string, { x: number; y: number }>;
   playerIds: string[];
   yourPlayerIndex: number;
+  onWinAnimationComplete?: () => void;
+  animatingCard: { card: CardType; rect: DOMRect } | null;
+};
+
+type AnimationState = {
+  initial: { scale: number; opacity: number; x: number; y: number };
+  animate: { scale: number; opacity: number; x: number; y: number };
+  transition: { duration: number; delay?: number };
 };
 
 export function Trick({
   playedCards,
-  winnerId,
-  profileRefs,
-  trickContainerRef,
+  winningPosition,
+  profilePositions,
   playerIds,
   yourPlayerIndex,
+  onWinAnimationComplete,
+  animatingCard,
 }: TrickProps) {
-  const [animationProps, setAnimationProps] = useState<any>({});
+  const [animationState, setAnimationState] = useState<
+    Record<string, AnimationState>
+  >({});
+  const onWinAnimationCompleteRef = useRef(onWinAnimationComplete);
+  onWinAnimationCompleteRef.current = onWinAnimationComplete;
+  const winAnimationCompleted = useRef(false);
+  const trickContainerRef = useRef<HTMLDivElement>(null);
 
-  useEffect(() => {
-    if (winnerId) {
-      const winnerProfile = profileRefs.current[winnerId];
-      if (!winnerProfile) return;
+  // Effect to set the initial "deal in" animation for cards
+  useLayoutEffect(() => {
+    // guard for invalid state
+    if (
+      playedCards.length === 0 ||
+      Object.keys(profilePositions).length === 0
+    ) {
+      setAnimationState({});
+      return;
+    }
 
-      const winnerRect = winnerProfile.getBoundingClientRect();
-      const trickRect = trickContainerRef.current?.getBoundingClientRect();
+    setAnimationState((prevState) => {
+      const newState = { ...prevState };
+      let needsUpdate = false;
 
-      if (winnerRect && trickRect) {
-        const newAnimationProps: any = {};
-        const winnerCenterX = winnerRect.left + winnerRect.width / 2;
-        const winnerCenterY = winnerRect.top + winnerRect.height / 2;
-        const trickCenterX = trickRect.left + trickRect.width / 2;
-        const trickCenterY = trickRect.top + trickRect.height / 2;
+      playedCards.forEach(({ player, card }) => {
+        if (!newState[player]) {
+          const trickRect = trickContainerRef.current?.getBoundingClientRect();
+          let initialPos = profilePositions[player] || { x: 0, y: 0 };
+          if (animatingCard && animatingCard.card === card && trickRect) {
+            initialPos = {
+              x: animatingCard.rect.left - trickRect.left,
+              y: animatingCard.rect.top - trickRect.top,
+            };
+          }
 
-        for (const { player } of playedCards) {
-          newAnimationProps[player] = {
-            x: winnerCenterX - trickCenterX,
-            y: winnerCenterY - trickCenterY,
-            scale: 0,
-            transition: { duration: 0.5, delay: 0.5 },
+          const playerIndex = playerIds.indexOf(player);
+          const relativeIndex = (playerIndex - yourPlayerIndex + 4) % 4;
+          const offset = (trickRect?.width ?? 0) * 0.3;
+          let animate: any = { scale: 1, opacity: 1, x: 0, y: 0 };
+          switch (relativeIndex) {
+            case 0:
+              animate.y = offset;
+              break;
+            case 1:
+              animate.x = -offset;
+              break;
+            case 2:
+              animate.y = -offset;
+              break;
+            case 3:
+              animate.x = offset;
+              break;
+          }
+
+          newState[player] = {
+            initial: { ...initialPos, scale: 0, opacity: 0 },
+            animate,
+            transition: { duration: 0.3 }, // deal-in animation duration
+          };
+          needsUpdate = true;
+        }
+      });
+
+      return needsUpdate ? newState : prevState;
+    });
+  }, [
+    playedCards,
+    playerIds,
+    yourPlayerIndex,
+    profilePositions,
+    animatingCard,
+  ]);
+
+  // Effect to handle the "winning" animation once the final position is received
+  useLayoutEffect(() => {
+    if (!winningPosition) return;
+
+    winAnimationCompleted.current = false;
+
+    setAnimationState((prevState) => {
+      const newState = { ...prevState };
+      playedCards.forEach(({ player }) => {
+        if (newState[player]) {
+          newState[player] = {
+            ...newState[player],
+            animate: {
+              ...winningPosition,
+              scale: 0,
+              opacity: 0,
+            },
+            transition: { duration: 0.6 }, // winner sweeping animation duration
           };
         }
-        setAnimationProps(newAnimationProps);
-      }
-    } else {
-      setAnimationProps({});
+      });
+      return newState;
+    });
+  }, [winningPosition, playedCards]);
+
+  const handleAnimationComplete = (definition: AnimationDefinition) => {
+    if (winAnimationCompleted.current) return;
+
+    const isWinAnimation =
+      typeof definition === "object" &&
+      definition !== null &&
+      "scale" in definition &&
+      definition.scale === 0;
+
+    if (isWinAnimation) {
+      winAnimationCompleted.current = true;
+      onWinAnimationCompleteRef.current?.();
     }
-  }, [winnerId, profileRefs, trickContainerRef, playedCards]);
+  };
 
   return (
-    <>
+    <div ref={trickContainerRef} className="w-full h-full">
       {playedCards.map(({ player, card }) => {
-        const playerIndex = playerIds.indexOf(player);
-        const relativeIndex = (playerIndex - yourPlayerIndex + 4) % 4;
-
-        const profile = profileRefs.current[player];
-        const trickRect = trickContainerRef.current?.getBoundingClientRect();
-        const profileRect = profile?.getBoundingClientRect();
-
-        let initial: any = { scale: 0, opacity: 0, x: 0, y: 0 };
-        if (profileRect && trickRect) {
-          initial.x =
-            profileRect.left +
-            profileRect.width / 2 -
-            (trickRect.left + trickRect.width / 2);
-          initial.y =
-            profileRect.top +
-            profileRect.height / 2 -
-            (trickRect.top + trickRect.height / 2);
-        }
-
-        let animate: any = { scale: 1, opacity: 1, x: 0, y: 0 };
-        const offset = 40;
-        switch (relativeIndex) {
-          case 0: // You
-            animate.y = offset;
-            break;
-          case 1: // Player to your left
-            animate.x = -offset;
-            break;
-          case 2: // Player across from you
-            animate.y = -offset;
-            break;
-          case 3: // Player to your right
-            animate.x = offset;
-            break;
-        }
-
-        if (animationProps[player]) {
-          animate = { ...animate, ...animationProps[player] };
-        }
+        const state = animationState[player];
+        if (!state) return null;
 
         return (
           <motion.div
             key={card}
-            className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-24 h-36"
-            initial={initial}
-            animate={animate}
-            transition={{ duration: 0.3 }}
+            className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-20 h-28"
+            initial={state.initial}
+            animate={state.animate}
+            transition={state.transition}
+            onAnimationComplete={handleAnimationComplete}
           >
             <Card card={card} />
           </motion.div>
         );
       })}
-    </>
+    </div>
   );
 }

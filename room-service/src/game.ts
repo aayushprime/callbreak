@@ -95,31 +95,40 @@ export class CallbreakGame extends Game {
 
 					this.state.playCard(player.id, card);
 					this.emit('broadcast', 'playerCard', { playerId: player.id, card });
-					this.sendGameState();
+					this.sendGameState(); // Important: send state with the 4th card visible
 
-					if (this.state.playedCards.length === 0) {
+					if (this.state.playedCards.length < 4) {
+						// Trick is not over, just advance to next player
+						this.notifyTurn();
+						this.startTurnTimer();
+					} else {
+						// Trick is over
 						const winnerId = this.state.resolveTrick();
 						this.emit('broadcast', 'trickWon', { winnerId });
-					}
 
-					// If a trick resolved, state may have advanced the turn and/or round
-					if (this.isPhase('round_over')) {
-						// Start next round automatically
-						await delay(2000);
-						this.state.newRound();
-						// this.emit('broadcast', 'gameState', this.snapshot());
-					}
+						if (this.isPhase('game_over')) {
+							this.clearTimers();
+							this.emit('broadcast', 'gameEnded', {
+								reason: 'completed',
+								winnerId: this.state.winner,
+							});
+							this.emit('ended', 'completed');
+							return;
+						}
 
-					if (this.isPhase('game_over')) {
-						this.clearTimers();
-						this.sendGameState();
-						this.emit('broadcast', 'gameEnded', { reason: 'completed' });
-						this.emit('ended', 'completed');
-						return;
+						if (this.isPhase('round_over')) {
+							await delay(2000); // Let clients see scores
+							this.state.newRound();
+							this.sendGameState();
+							this.notifyTurn();
+							this.startTurnTimer();
+						} else {
+							// Normal trick win, wait for client animation
+							await delay(1500);
+							this.notifyTurn();
+							this.startTurnTimer();
+						}
 					}
-
-					this.notifyTurn();
-					this.startTurnTimer();
 					break;
 				}
 				default:
@@ -152,8 +161,8 @@ export class CallbreakGame extends Game {
 			this.state.phase === 'playing' && isPlayerTurn
 				? computeValidCards(
 						this.state.playerCards[playerId],
-						this.state.playedCards.map((p) => p.card)
-				  )
+						this.state.playedCards.map((p) => p.card),
+					)
 				: [];
 		return {
 			players: this.state.players.map((p) => p.id),
@@ -161,9 +170,18 @@ export class CallbreakGame extends Game {
 			playerCards: this.state.playerCards[playerId],
 			turn: this.state.turn,
 			phase: this.state.phase,
+			roundNumber: this.state.roundNumber,
 			bids: mapToObj(this.state.bids),
 			playedCards: this.state.playedCards,
+			tricksWon: mapToObj(this.state.tricksWon),
 			validCards,
+			roundHistory: this.state.roundHistory.map((rh) => ({
+				...rh,
+				bids: mapToObj(rh.bids),
+				tricksWon: mapToObj(rh.tricksWon),
+			})),
+			points: mapToObj(this.state.points),
+			winner: this.state.winner,
 		};
 	}
 
@@ -203,6 +221,7 @@ export class CallbreakGame extends Game {
 				// Auto-bid minimum
 				this.state.submitBid(playerId, 1);
 				this.emit('broadcast', 'playerBid', { playerId, bid: 1 });
+				this.emit('broadcast', 'bidMade', {});
 				this.sendGameState();
 			} else if (this.isPhase('playing')) {
 				// Auto-play the first valid card
@@ -238,7 +257,7 @@ export class CallbreakGame extends Game {
 	private pickRandomValidCard(playerId: string, hand: Card[]): Card {
 		const candidates = computeValidCards(
 			hand,
-			this.state.playedCards.map((p) => p.card)
+			this.state.playedCards.map((p) => p.card),
 		);
 		const idx = Math.floor(Math.random() * candidates.length);
 		return candidates[idx];

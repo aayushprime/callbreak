@@ -6,7 +6,7 @@ import { Card } from "../ui/Card";
 
 interface HandProps {
   hand: CardType[];
-  onPlay: (card: CardType) => void;
+  onPlay: (card: CardType, ref: React.RefObject<HTMLDivElement>) => void;
   validCards: CardType[];
 }
 
@@ -28,8 +28,8 @@ export function Hand({ hand, onPlay, validCards }: HandProps) {
     return () => ro.disconnect();
   }, []);
 
-  const MIN_SPACING = 30;
-  const DEFAULT_SPACING = 96;
+  const MIN_SPACING = 20;
+  const DEFAULT_SPACING = 48;
 
   const spacing = React.useMemo(() => {
     return total > 1
@@ -76,7 +76,7 @@ interface HandCardProps {
   card: CardType;
   index: number;
   xOffset: number;
-  onPlay: (card: CardType) => void;
+  onPlay: (card: CardType, ref: React.RefObject<HTMLDivElement>) => void;
   cardWidth: number;
   cardHeight: number;
   allowed: boolean;
@@ -98,7 +98,7 @@ function HandCard({
     () => ({
       position: "absolute",
       left: "50%",
-      bottom: `-${cardHeight * (allowed ? 0.4 : 0.8)}px`,
+      bottom: `-${cardHeight * (allowed ? 0.6 : 0.7)}px`,
       transform: `translateX(-50%)`,
       transformOrigin: "bottom center",
       zIndex: 100 + index,
@@ -120,12 +120,11 @@ function HandCard({
       <Card
         ref={innerRef}
         card={card}
-        className={`${allowed ? "cursor-pointer" : "cursor-not-allowed"}`}
         onClick={() => {
           if (allowed) {
             setLifted(true);
             setTimeout(() => {
-              onPlay(card);
+              onPlay(card, innerRef);
               setLifted(false);
             }, 100);
           }

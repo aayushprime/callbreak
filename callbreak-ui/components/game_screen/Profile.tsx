@@ -17,6 +17,7 @@ type ProfileProps = {
   picture?: string;
   name?: string;
   bid?: number | null;
+  tricksWon?: number;
   points?: number;
   showStats?: boolean;
   country?: string;
@@ -28,6 +29,7 @@ type ProfileProps = {
   pulseIntervalMs?: number;
   strokeColor?: string;
   pulseColor?: string;
+  pillPosition?: "top" | "bottom" | "left" | "right";
 };
 
 export const Profile = forwardRef<HTMLDivElement, ProfileProps>(
@@ -40,6 +42,7 @@ export const Profile = forwardRef<HTMLDivElement, ProfileProps>(
       className = "",
       active = false,
       bid = null,
+      tricksWon = 0,
       points = 0,
       showStats = false,
       totalTime = 0,
@@ -48,6 +51,7 @@ export const Profile = forwardRef<HTMLDivElement, ProfileProps>(
       pulseIntervalMs = 1600,
       strokeColor = "#0e60ed",
       pulseColor = "#3b82f6",
+      pillPosition = "bottom",
     }: ProfileProps,
     ref
   ) => {
@@ -88,6 +92,20 @@ export const Profile = forwardRef<HTMLDivElement, ProfileProps>(
       return () => clearInterval(id);
       // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [internalTotalTime]);
+
+    const getPillPositionClasses = () => {
+      switch (pillPosition) {
+        case "top":
+          return "-top-10 left-1/2 -translate-x-1/2";
+        case "left":
+          return "-left-24 top-1/2 -translate-y-1/2";
+        case "right":
+          return "-right-24 top-1/2 -translate-y-1/2";
+        case "bottom":
+        default:
+          return "-bottom-16 left-1/2 -translate-x-1/2";
+      }
+    };
 
     return (
       <div
@@ -199,11 +217,13 @@ export const Profile = forwardRef<HTMLDivElement, ProfileProps>(
 
         {/* Bid / Points badges (only show when requested) */}
         {showStats && (
-          <div className="absolute -bottom-14 left-1/2 -translate-x-1/2 flex gap-2">
+          <div
+            className={twMerge("absolute flex gap-2", getPillPositionClasses())}
+          >
             <div className="bg-white/10 backdrop-blur-sm text-white text-xs px-3 py-1 rounded-full border border-white/10 flex items-center gap-2">
-              <span className="text-[10px] opacity-80">B/P</span>
+              <span className="text-[10px] opacity-80">B/W</span>
               <strong className="text-sm">
-                {bid ?? "-"}/{points}
+                {bid ?? "-"}/{tricksWon ?? 0}
               </strong>
             </div>
           </div>

@@ -9,7 +9,12 @@ export class Bot extends Player {
 	cards: Card[] = [];
 	private hand: Card[] = [];
 
-	constructor(readonly room: Room, id: string, name: string, country: string) {
+	constructor(
+		readonly room: Room,
+		id: string,
+		name: string,
+		country: string,
+	) {
 		super(id, name, country);
 		this.isBot = true;
 	}
@@ -21,16 +26,16 @@ export class Bot extends Player {
 		} else if (message.type === 'getBid') {
 			// Simple bot logic: bid 1 or 2
 			const bid = Math.floor(Math.random() * 2) + 1;
-			setTimeout(() => this.bid(bid), 500);
+			setTimeout(() => this.bid(bid), 1000);
 		} else if (message.type === 'getCard') {
 			const { playedCards } = message.payload;
 			const validCards = computeValidCards(
 				this.hand,
-				playedCards.map((p: any) => p.card)
+				playedCards.map((p: any) => p.card),
 			);
 
 			const cardToPlay = validCards[Math.floor(Math.random() * validCards.length)];
-			setTimeout(() => this.playCard(cardToPlay), 500);
+			setTimeout(() => this.playCard(cardToPlay), 1000);
 		}
 	}
 

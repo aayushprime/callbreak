@@ -1,40 +1,59 @@
 "use client";
 
-type PlayerData = {
+import { RoundHistory } from "common/dist/state";
+
+type Player = {
+  id: string;
   name: string;
-  results: number[];
 };
 
-export const Books = ({ onClose }: { onClose: () => void }) => {
-  const players: PlayerData[] = [
-    { name: "P1", results: [1.2, 2.0, 1.5, 3.0, 2.5] },
-    { name: "P2", results: [1.0, 1.5, 2.0, 2.0, 1.5] },
-    { name: "P3", results: [0.5, 1.0, 1.5, 2.5, 3.0] },
-    { name: "P4", results: [2.0, 2.5, 1.0, 1.5, 2.0] },
-  ];
+import { ReactNode } from "react";
 
-  const totalRounds = players[0].results.length;
+type Player = {
+  id: string;
+  name: string;
+};
+
+type BooksProps = {
+  onClose: () => void;
+  players: Player[];
+  roundHistory: RoundHistory[];
+  points: Record<string, number>;
+  showCloseButton?: boolean;
+  footer?: ReactNode;
+  winnerId?: string | null;
+};
+
+export const Books = ({
+  onClose,
+  players,
+  roundHistory,
+  points,
+  showCloseButton = true,
+  footer,
+  winnerId,
+}: BooksProps) => {
+  if (!roundHistory) {
+    return null;
+  }
 
   return (
     <div className="fixed inset-0 flex items-center justify-center z-50">
-      {/* Darker, semi-transparent background */}
       <div className="absolute inset-0 bg-black/50 backdrop-blur-md"></div>
+      <div className="relative bg-green-800 rounded-3xl shadow-lg border border-green-600 p-6 w-[95%] max-w-5xl text-white flex flex-col gap-4">
+        {showCloseButton && (
+          <button
+            onClick={onClose}
+            className="absolute top-4 right-4 text-green-200 font-bold text-xl hover:text-white"
+          >
+            &times;
+          </button>
+        )}
 
-      {/* Popup with a darker theme */}
-      <div className="relative bg-green-800 rounded-3xl shadow-lg border border-green-600 p-6 w-[95%] max-w-5xl text-white">
-        {/* Close button */}
-        <button
-          onClick={onClose}
-          className="absolute top-4 right-4 text-green-200 font-bold text-xl hover:text-white"
-        >
-          &times;
-        </button>
-
-        <h2 className="text-2xl font-bold text-white mb-6 text-center">
-          Books
+        <h2 className="text-2xl font-bold text-white text-center">
+          {winnerId ? "Game Over" : "Books"}
         </h2>
 
-        {/* Table */}
         <div className="overflow-x-auto">
           <table className="min-w-full border border-green-600 border-collapse text-center">
             <thead>
@@ -42,75 +61,58 @@ export const Books = ({ onClose }: { onClose: () => void }) => {
                 <th className="px-4 py-2 border border-green-600">Round</th>
                 {players.map((p) => (
                   <th
-                    key={p.name}
+                    key={p.id}
                     className="px-4 py-2 border border-green-600 text-green-200"
                   >
-                    {p.name}
+                    <div className="flex items-center justify-center gap-2">
+                      <span>{p.name}</span>
+                      {p.id === winnerId && (
+                        <span className="text-xs bg-yellow-500 text-black px-2 py-0.5 rounded-full font-bold">
+                          WINNER
+                        </span>
+                      )}
+                    </div>
                   </th>
                 ))}
-                <th className="px-4 py-2 border border-green-600 text-green-200">
-                  Total
-                </th>
               </tr>
             </thead>
 
             <tbody>
-              {Array.from({ length: totalRounds }, (_, rIdx) => {
-                const roundTotal = players.reduce(
-                  (acc, p) => acc + p.results[rIdx],
-                  0
-                );
-                return (
-                  <tr
-                    key={rIdx}
-                    className={
-                      rIdx % 2 === 0 ? "bg-green-700/50" : "bg-green-800"
-                    }
-                  >
-                    <td className="px-4 py-2 border border-green-600 font-semibold">
-                      {rIdx + 1}
-                    </td>
-                    {players.map((p) => (
-                      <td
-                        key={`${p.name}-r${rIdx}`}
-                        className="px-4 py-2 border border-green-600"
-                      >
-                        {p.results[rIdx].toFixed(1)}
-                      </td>
-                    ))}
-                    <td className="px-4 py-2 border border-green-600 font-bold">
-                      {roundTotal.toFixed(1)}
-                    </td>
-                  </tr>
-                );
-              })}
-
-              {/* Optional: Total row summing all rounds */}
-              <tr className="bg-green-700 font-bold">
-                <td className="px-4 py-2 border border-green-600">Total</td>
-                {players.map((p) => {
-                  const total = p.results.reduce((acc, r) => acc + r, 0);
-                  return (
+              {roundHistory.map((round, rIdx) => (
+                <tr
+                  key={rIdx}
+                  className={
+                    rIdx % 2 === 0 ? "bg-green-700/50" : "bg-green-800"
+                  }
+                >
+                  <td className="px-4 py-2 border border-green-600 font-semibold">
+                    {round.roundNumber}
+                  </td>
+                  {players.map((p) => (
                     <td
-                      key={p.name}
+                      key={`${p.id}-r${rIdx}`}
                       className="px-4 py-2 border border-green-600"
                     >
-                      {total.toFixed(1)}
+                      {round.bids[p.id]}/{round.tricksWon[p.id]}
                     </td>
-                  );
-                })}
-                <td className="px-4 py-2 border border-green-600">
-                  {players
-                    .reduce(
-                      (acc, p) => acc + p.results.reduce((a, r) => a + r, 0),
-                      0
-                    )
-                    .toFixed(1)}
-                </td>
+                  ))}
+                </tr>
+              ))}
+              <tr className="bg-green-700 font-bold">
+                <td className="px-4 py-2 border border-green-600">Total</td>
+                {players.map((p) => (
+                  <td
+                    key={p.id}
+                    className="px-4 py-2 border border-green-600"
+                  >
+                    {points[p.id]?.toFixed(1)}
+                  </td>
+                ))}
               </tr>
             </tbody>
           </table>
         </div>
+        {footer && <div className="flex justify-center">{footer}</div>}
       </div>
     </div>
   );

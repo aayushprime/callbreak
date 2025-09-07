@@ -13,7 +13,7 @@ export interface RoundHistory {
   biddingOrder: string[];
 }
 
-const TOTAL_ROUNDS = 5;
+const TOTAL_ROUNDS = 1;
 
 export class CallbreakState {
   players: Player[];
@@ -62,10 +62,12 @@ export class CallbreakState {
       return;
     }
 
+    const isFirstRound = this.roundNumber === 0;
+
     this.roundNumber += 1;
     let deck = createStandardDeck(true);
     for (const player of this.players) {
-      this.playerCards[player.id] = drawCards(deck, 13);
+      this.playerCards[player.id] = drawCards(deck, 1);
       this.playerCards[player.id].sort((a, b) => {
         const suitA = getSuit(a);
         const suitB = getSuit(b);
@@ -80,9 +82,16 @@ export class CallbreakState {
     this.cardsHistory = [];
     this.playedCards = [];
 
-    const dealerIndex = (this.roundNumber - 1) % this.players.length;
-    this.turn = (dealerIndex + 1) % this.players.length;
-    this.trickLeadPlayerIndex = this.turn;
+    if (isFirstRound) {
+      // For the first round, the turn is set by dealer rotation.
+      const dealerIndex = (this.roundNumber - 1) % this.players.length;
+      this.turn = (dealerIndex + 1) % this.players.length;
+      this.trickLeadPlayerIndex = this.turn;
+    } else {
+      // For subsequent rounds, the winner of the last trick starts.
+      // The 'turn' is already correctly set by the last call to resolveTrick().
+      this.trickLeadPlayerIndex = this.turn;
+    }
 
     this.currentBiddingOrder = [];
     for (let i = 0; i < this.players.length; i++) {
@@ -122,13 +131,13 @@ export class CallbreakState {
 
     this.playedCards.push({ player: playerId, card: card });
     this.playerCards[playerId] = this.playerCards[playerId].filter(
-      (c) => c !== card
+      (c) => c !== card,
     );
 
+    // The turn advances, but the trick is not resolved automatically.
+    // The server will call resolveTrick() explicitly.
     if (this.playedCards.length < this.players.length) {
       this.turn = (this.turn + 1) % this.players.length;
-    } else {
-      this.resolveTrick();
     }
   }
 
@@ -137,7 +146,7 @@ export class CallbreakState {
     if (this.playedCards.length === 0) return true;
     const leadingSuit = getSuit(this.playedCards[0].card);
     const playerHasLeadingSuit = playerHand.some(
-      (c) => getSuit(c) === leadingSuit
+      (c) => getSuit(c) === leadingSuit,
     );
     if (playerHasLeadingSuit) return getSuit(cardToPlay) === leadingSuit;
     const playerHasTrump = playerHand.some((c) => getSuit(c) === TRUMP_SUIT);
@@ -150,7 +159,7 @@ export class CallbreakState {
       const canPlayHigherTrump = playerHand.some(
         (c) =>
           getSuit(c) === TRUMP_SUIT &&
-          getRankValue(c) > highestTrumpInTrickValue
+          getRankValue(c) > highestTrumpInTrickValue,
       );
       return !canPlayHigherTrump;
     }
@@ -178,7 +187,7 @@ export class CallbreakState {
     this.turn = winnerIndex;
     this.trickLeadPlayerIndex = winnerIndex;
 
-    if (this.cardsHistory.length === 13) {
+    if (Object.values(this.playerCards).every((hand) => hand.length === 0)) {
       this.updatePoints();
       this.archiveRoundHistory();
       this.phase = "round_over";

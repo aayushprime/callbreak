@@ -56,7 +56,15 @@ export function computeValidCards(hand: Card[], playedCards: Card[]): Card[] {
 
 	const leadingSuit = getSuit(playedCards[0]);
 	const hasLeading = hand.some((c) => getSuit(c) === leadingSuit);
-	if (hasLeading) return hand.filter((c) => getSuit(c) === leadingSuit);
+	if (hasLeading) {
+		const leadingCards = hand.filter((c) => getSuit(c) === leadingSuit);
+		const highestCardInTrick = playedCards
+			.filter((c) => getSuit(c) === leadingSuit)
+			.reduce((max, c) => (getRankValue(c) > getRankValue(max) ? c : max), playedCards[0]);
+		const higherCards = leadingCards.filter((c) => beats(c, highestCardInTrick, leadingSuit));
+		if (higherCards.length > 0) return higherCards;
+		return leadingCards;
+	}
 
 	const hasTrump = hand.some((c) => getSuit(c) === TRUMP_SUIT);
 	if (hasTrump) {

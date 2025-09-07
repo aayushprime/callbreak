@@ -48,6 +48,22 @@ export const Card = React.forwardRef<HTMLDivElement, CardProps>(
             {p.suit}
           </div>
         </div>
+        <div className="absolute bottom-2 right-2 text-left leading-none transform rotate-180">
+          <div
+            className={`text-base font-semibold ${
+              p.suit === "♥" || p.suit === "♦" ? "text-red-600" : "text-black"
+            }`}
+          >
+            {p.rank}
+          </div>
+          <div
+            className={`text-base ${
+              p.suit === "♥" || p.suit === "♦" ? "text-red-600" : "text-black"
+            }`}
+          >
+            {p.suit}
+          </div>
+        </div>
       </div>
     );
   }
