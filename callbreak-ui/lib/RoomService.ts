@@ -1,4 +1,4 @@
-type EventData = any;
+import { EventEmitter } from "events";
 
 export type RoomConnectionStatus =
   | "disconnected"
@@ -6,78 +6,24 @@ export type RoomConnectionStatus =
   | "connected"
   | "error";
 
-export class Room {
+class RoomService extends EventEmitter {
+  private static instance: RoomService;
   private connection: WebSocket | null = null;
-
-  id: string;
-  name: string;
-  roomId: string;
   public status: RoomConnectionStatus = "disconnected";
   public errorMessage: string | null = null;
 
-  static create(id: string, name: string, roomId: string) {
-    return new Room(id, name, roomId);
+  private constructor() {
+    super();
   }
 
-  constructor(
-    id: string,
-    name: string,
-    roomId: string,
-    readonly noCreate: boolean = false
-  ) {
-    this.id = id;
-    this.name = name;
-    this.roomId = roomId;
-  }
-
-  private listener?: (event: EventData, ack: () => void) => void;
-  private backlog: EventData[] = [];
-  private maxBacklog = 100;
-  private idCounter = 0;
-
-  emit(type: string, payload: any) {
-    const event: EventData = {
-      id: this.idCounter++,
-      type,
-      payload,
-      ts: Date.now(),
-    };
-
-    this.store(event);
-    if (this.listener) {
-      this.deliver(event);
+  public static getInstance(): RoomService {
+    if (!RoomService.instance) {
+      RoomService.instance = new RoomService();
     }
+    return RoomService.instance;
   }
 
-  subscribe(listener: (event: EventData, ack: () => void) => void) {
-    this.listener = listener;
-    for (const event of [...this.backlog]) {
-      this.deliver(event);
-    }
-
-    return () => {
-      this.listener = undefined;
-    };
-  }
-
-  private deliver(event: EventData) {
-    this.listener?.({ type: event.type, payload: event.payload }, () => {
-      this.backlog = this.backlog.filter((e) => e.id !== event.id);
-    });
-  }
-
-  private store(event: EventData) {
-    this.backlog.push(event);
-    if (this.backlog.length > this.maxBacklog) {
-      this.backlog.shift();
-    }
-  }
-
-  getBacklog(): EventData[] {
-    return [...this.backlog];
-  }
-
-  connect() {
+  connect(id: string, name: string, roomId: string, noCreate: boolean = false) {
     if (this.connection) return;
 
     this.status = "connecting";
@@ -85,10 +31,10 @@ export class Room {
     this.emit("status", this.status);
 
     const queryParams = new URLSearchParams({
-      id: this.id,
-      roomId: this.roomId,
-      name: this.name,
-      noCreate: this.noCreate.toString(),
+      id,
+      name,
+      roomId,
+      noCreate: noCreate.toString(),
     }).toString();
 
     this.connection = new WebSocket(
@@ -136,11 +82,6 @@ export class Room {
     };
   }
 
-  retry() {
-    this.disconnect();
-    this.connect();
-  }
-
   disconnect() {
     if (this.connection) {
       this.connection.onopen = null;
@@ -162,7 +103,10 @@ export class Room {
     }
   }
 
-  sendGameMessage(message: "bid" | "playCard", payload: any) {
+  sendGameMessage(
+    message: "bid" | "playCard" | "requestGameState",
+    payload: any
+  ) {
     if (this.connection && this.connection.readyState === WebSocket.OPEN) {
       this.connection.send(
         JSON.stringify({ type: message, payload, scope: "game" })
@@ -172,3 +116,5 @@ export class Room {
     }
   }
 }
+
+export default RoomService.getInstance();

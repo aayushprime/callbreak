@@ -40,89 +40,94 @@ export class ServerController {
 	private connectionMap = new Map<string, WebSocket<UserData>>();
 
 	constructor(port: number) {
-		uWS
-			.App({})
-			.ws<UserData>('/*', {
-				upgrade: (res, req, context) => {
-					const secWebSocketKey = req.getHeader('sec-websocket-key');
-					const secWebSocketProtocol = req.getHeader('sec-websocket-protocol');
-					const secWebSocketExtensions = req.getHeader('sec-websocket-extensions');
+		const app = uWS.App({}).ws<UserData>('/*', {
+			upgrade: (res, req, context) => {
+				const secWebSocketKey = req.getHeader('sec-websocket-key');
+				const secWebSocketProtocol = req.getHeader('sec-websocket-protocol');
+				const secWebSocketExtensions = req.getHeader('sec-websocket-extensions');
 
-					const params = new URLSearchParams(req.getQuery());
-					const playerId = params.get('id');
-					const roomId = params.get('roomId');
-					const name = params.get('name');
-					const noCreate = params.get('noCreate') === 'true';
+				const params = new URLSearchParams(req.getQuery());
+				const playerId = params.get('id');
+				const roomId = params.get('roomId');
+				const name = params.get('name');
+				const noCreate = params.get('noCreate') === 'true';
 
-					res.upgrade({ playerId, roomId, name, noCreate }, secWebSocketKey, secWebSocketProtocol, secWebSocketExtensions, context);
-				},
+				res.upgrade({ playerId, roomId, name, noCreate }, secWebSocketKey, secWebSocketProtocol, secWebSocketExtensions, context);
+			},
 
-				/* `open` handler validates, sends a specific error message on failure, then closes. */
-				open: (ws: WebSocket<UserData>) => {
-					const { playerId, roomId, name, noCreate } = ws.getUserData();
+			/* `open` handler validates, sends a specific error message on failure, then closes. */
+			open: (ws: WebSocket<UserData>) => {
+				const { playerId, roomId, name, noCreate } = ws.getUserData();
 
-					// --- VALIDATION BLOCK ---
+				// --- VALIDATION BLOCK ---
 
-					// 1. Check for missing credentials.
-					if (!playerId || !roomId || !name) {
-						const reason = 'Missing credentials';
-						console.log(`Validation failed: ${reason}.`, { playerId, roomId, name });
-						// Send a structured error message first
-						ws.send(JSON.stringify({ type: 'error', message: reason }));
-						// Then close the connection
-						ws.end(4000, reason);
-						return;
-					}
-
-					// 2. Check if player ID is already in use.
-					if (this.connectionMap.has(playerId)) {
-						const reason = 'Player ID already connected';
-						console.log(`Validation failed: ${reason}:`, playerId);
-						ws.send(JSON.stringify({ type: 'error', message: reason }));
-						ws.end(4001, reason);
-						return;
-					}
-
-					// 3. Check if joining a non-existent room is disallowed.
-					const room = this.roomManager.rooms.get(roomId);
-					if (!room && noCreate) {
-						const reason = 'Room not found';
-						console.log(`Validation failed: ${reason} and creation is disabled.`);
-						ws.send(JSON.stringify({ type: 'error', message: reason }));
-						ws.end(4002, reason);
-						return;
-					}
-
-					// --- END VALIDATION ---
-
-					// If all checks pass, proceed with the connection setup.
-					ws.send(JSON.stringify({ type: 'open' }));
-					this.onConnection(ws);
-				},
-
-				message: (ws: WebSocket<UserData>, message: ArrayBuffer, isBinary: boolean) => {
-					// This will only be called for fully established connections, not for the error messages above.
-					const { player, room } = (ws as CustomWebSocket).attachment;
-					this.onMessage(player, room, message);
-				},
-
-				close: (ws: WebSocket<UserData>, code: number, message: ArrayBuffer) => {
-					const attachment = (ws as CustomWebSocket).attachment;
-					if (attachment) {
-						const { player, room } = attachment;
-						this.onClose(player, room);
-					} else {
-						console.log(`Connection closed pre-attachment. Code: ${code}`);
-					}
-				},
-			})
-			.listen(port, (token) => {
-				if (token) {
-					console.log(`Server started on port ${port}`);
-				} else {
-					console.log(`Failed to start server on port ${port}`);
+				// 1. Check for missing credentials.
+				if (!playerId || !roomId || !name) {
+					const reason = 'Missing credentials';
+					console.log(`Validation failed: ${reason}.`, { playerId, roomId, name });
+					// Send a structured error message first
+					ws.send(JSON.stringify({ type: 'error', message: reason }));
+					// Then close the connection
+					ws.end(4000, reason);
+					return;
 				}
-			});
+
+				// 2. Check if player ID is already in use.
+				if (this.connectionMap.has(playerId)) {
+					const reason = 'Player ID already connected';
+					console.log(`Validation failed: ${reason}:`, playerId);
+					ws.send(JSON.stringify({ type: 'error', message: reason }));
+					ws.end(4001, reason);
+					return;
+				}
+
+				// 3. Check if joining a non-existent room is disallowed.
+				const room = this.roomManager.rooms.get(roomId);
+				if (!room && noCreate) {
+					const reason = 'Room not found';
+					console.log(`Validation failed: ${reason} and creation is disabled.`);
+					ws.send(JSON.stringify({ type: 'error', message: reason }));
+					ws.end(4002, reason);
+					return;
+				}
+
+				// --- END VALIDATION ---
+
+				// If all checks pass, proceed with the connection setup.
+				ws.send(JSON.stringify({ type: 'open' }));
+				this.onConnection(ws);
+			},
+
+			message: (ws: WebSocket<UserData>, message: ArrayBuffer, isBinary: boolean) => {
+				// This will only be called for fully established connections, not for the error messages above.
+				const { player, room } = (ws as CustomWebSocket).attachment;
+				this.onMessage(player, room, message);
+			},
+
+			close: (ws: WebSocket<UserData>, code: number, message: ArrayBuffer) => {
+				const attachment = (ws as CustomWebSocket).attachment;
+				if (attachment) {
+					const { player, room } = attachment;
+					this.onClose(player, room);
+				} else {
+					console.log(`Connection closed pre-attachment. Code: ${code}`);
+				}
+			},
+		});
+		app.listen('0.0.0.0', 8080, (socket) => {
+			if (socket) {
+				console.log(`Server started on 0.0.0.0 ${port}`);
+			} else {
+				console.log(`Failed to start server on port ${port}`);
+			}
+		});
+		app.listen('::', port, (socket) => {
+			if (socket) {
+				console.log(`Server started on :: ${port}`);
+			} else {
+				console.log(`Failed to start server on port ${port}`);
+			}
+		});
 	}
 
 	/**

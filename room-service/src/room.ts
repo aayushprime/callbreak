@@ -14,11 +14,7 @@ export class Room extends EventEmitter {
 	private isActive: boolean = false; // Is a game currently running?
 	private bots: Record<string, Bot> = {};
 
-	constructor(
-		public readonly id: string,
-		private readonly gameFactory: GameFactory,
-		readonly onEmpty: () => void,
-	) {
+	constructor(public readonly id: string, private readonly gameFactory: GameFactory, readonly onEmpty: () => void) {
 		super();
 	}
 
@@ -36,6 +32,7 @@ export class Room extends EventEmitter {
 		if (message.type === 'startGame') {
 			// SECURITY: Only the host can start the game.
 			if (player.id !== this.hostId) return;
+
 			if (this.isActive) {
 				this.emit('close', player.id, 'A game is already in progress.');
 				return;
@@ -62,9 +59,12 @@ export class Room extends EventEmitter {
 	}
 
 	public join(player: Player): void {
-		if (this.isActive) {
-			this.emit('close', player.id, 'A game is already in progress.');
-			// this.emit('send', 'room', player.id, 'error', { message: 'A game is already in progress.' });
+		if (this.isActive && this.game) {
+			if (this.players.has(player.id)) {
+				this.game.onReconnect(player);
+			} else {
+				this.emit('close', player.id, 'A game is already in progress.');
+			}
 			return;
 		}
 		// Announce to others

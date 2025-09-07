@@ -4,111 +4,60 @@ import { useGame } from "@/contexts/GameContext";
 import { Popup } from "../ui/Popup";
 import { LobbyProfile } from "./LobbyProfile";
 import { RoomCodeBadge } from "./RoomCodeBadge";
-import { Room } from "@/lib/room";
 import { useRoom } from "@/contexts/RoomContext";
-import { RoomConnectionStatus } from "@/lib/room";
 import { useEffect, useState } from "react";
-import { usePathname, useRouter } from "next/navigation";
+import { useRouter } from "next/navigation";
 import { useToast } from "@/contexts/ToastContext";
 import { usePlayerName } from "@/hooks/usePlayerName";
+import RoomService from "@/lib/RoomService";
 
 export function LobbyScreen() {
-  const { room, setRoom } = useRoom();
+  const { roomState, dispatch } = useRoom();
   const { setScene } = useGame();
-
   const { addToast } = useToast();
-
-  const [players, setPlayers] = useState<
-    { id: string; picture: string; name: string; country: string }[]
-  >([]);
-  const [host, setHost] = useState("");
-
-  const [popupOpen, setPopupOpen] = useState(false);
-  const [status, setStatus] = useState<RoomConnectionStatus>("connected");
   const [playerName] = usePlayerName();
   const router = useRouter();
-  const pathname = usePathname();
+
+  const [popupOpen, setPopupOpen] = useState(false);
   const [popupTitle, setPopupTitle] = useState("Room not found.");
 
   useEffect(() => {
-    if (room) return;
-    const pathSegments = pathname.split("/").filter(Boolean);
-    const roomId = pathSegments.length === 1 ? pathSegments[0] : undefined;
+    const handleGameStarted = () => {
+      setScene("game");
+    };
 
-    if (!roomId) {
-      setScene("menu"); // If no roomId, go back to menu
-      return;
-    }
-    const newRoom = new Room(playerName, playerName, roomId, true);
-    setRoom(newRoom);
-    newRoom.connect();
-  }, [pathname, playerName, setRoom, setScene]);
-
-  useEffect(() => {
-    if (!room) return;
-    const unsubscribe = room.subscribe((event, ack) => {
-      if (event.type === "welcome") {
-        ack();
-        console.log(event.payload);
-        setPlayers(event.payload.players);
-        setHost(event.payload.hostId);
-      } else if (event.type === "close") {
-        addToast("Connection broken.");
-        ack();
-      } else if (event.type === "error") {
-        if (event.payload?.message === "Room not found") {
-          ack();
-          setPopupOpen(true);
-        } else if (event.payload.message === "A game is already in progress.") {
-          ack();
-          setPopupTitle("The game has already started.");
-          setPopupOpen(true);
-        } else if (event.payload.message === "4 players required.") {
-          ack();
-          addToast("4 players required.");
-        } else {
-          console.log("Error message from server: [unhandled]", event);
-        }
-      } else if (event.type === "playerLeft") {
-        ack();
-        setPlayers((prev) =>
-          prev.filter((player) => player.id !== event.payload.playerId)
-        );
-      } else if (event.type === "hostChanged") {
-        ack();
-        setHost(event.payload.newHostId);
-      } else if (event.type === "playerJoined") {
-        ack();
-        setPlayers((prev) => [
-          ...prev,
-          {
-            id: event.payload.id,
-            picture: event.payload.picture,
-            name: event.payload.name,
-            country: event.payload.country,
-          },
-        ]);
-      } else if (event.type === "gameStarted") {
-        ack();
-        setScene("game");
-      } else if (event.type === "status") {
-        ack();
-        setStatus(event.payload);
+    const handleError = (error: { message: string }) => {
+      if (error.message === "Room not found") {
+        setPopupTitle("Room not found.");
+        setPopupOpen(true);
+      } else if (error.message === "A game is already in progress.") {
+        setPopupTitle("The game has already started.");
+        setPopupOpen(true);
+      } else if (error.message === "4 players required.") {
+        addToast("4 players required.");
       } else {
-        // ack();
-        console.log("[Lobby] Unhandled event:", event);
+        console.log("Error message from server: [unhandled]", error);
       }
-    });
-    return unsubscribe;
-  }, [room]);
+    };
+
+    RoomService.on("gameStarted", handleGameStarted);
+    RoomService.on("error", handleError);
+
+    return () => {
+      RoomService.off("gameStarted", handleGameStarted);
+      RoomService.off("error", handleError);
+    };
+  }, [setScene, addToast]);
 
   const handleLeave = () => {
-    room?.disconnect();
+    RoomService.disconnect();
+    dispatch({ type: "MANUAL_DISCONNECT" });
     router.push("/");
+    setScene("menu");
   };
 
   const handleBegin = () => {
-    room?.send("startGame");
+    RoomService.send("startGame");
   };
 
   return (
@@ -124,16 +73,16 @@ export function LobbyScreen() {
         <div className="mt-5 text-5xl font-extrabold mb-6 drop-shadow-sm">
           Lobby
         </div>
-        {room?.roomId && <RoomCodeBadge code={room.roomId} />}
+        {roomState.roomId && <RoomCodeBadge code={roomState.roomId} />}
         <div
           className={`flex flex-row mt-16 justify-center gap-6 w-full max-w-4xl
         `}
         >
-          {players.map((player) => (
+          {roomState.players.map((player) => (
             <div
               key={player.id}
               className={`flex flex-col items-center p-4 rounded-xl shadow-md transition-transform transform hover:scale-105 ${
-                player.id === host
+                player.id === roomState.hostId
                   ? "bg-yellow-200/30 border-2 border-yellow-400"
                   : "bg-white/10"
               }`}
@@ -149,7 +98,7 @@ export function LobbyScreen() {
                     YOU
                   </span>
                 )}
-                {player.id === host && (
+                {player.id === roomState.hostId && (
                   <span className="text-xs bg-yellow-500/50 text-white px-2 py-0.5 rounded-full font-bold">
                     HOST
                   </span>
@@ -160,10 +109,10 @@ export function LobbyScreen() {
         </div>
       </div>
 
-      {host && host === playerName && (
+      {roomState.hostId && roomState.hostId === playerName && (
         <Button className="margin-auto" title="Begin" onClick={handleBegin} />
       )}
-      {host && host !== playerName && (
+      {roomState.hostId && roomState.hostId !== playerName && (
         <div>Waiting for host to start the game...</div>
       )}
 

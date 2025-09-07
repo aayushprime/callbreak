@@ -1,34 +1,18 @@
 "use client";
 import React, { useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Card as CardType } from "../../lib/deck";
+import { Card as CardType } from "common";
 import { Card } from "../ui/Card";
 
-export interface HandCard {
-  uid: string;
-  createdAt: number;
-  code: CardType;
-  fromDeck?: boolean;
+interface HandProps {
+  hand: CardType[];
+  onPlay: (card: CardType) => void;
+  validCards: CardType[];
 }
 
-interface CardsHandProps {
-  hand: HandCard[];
-  onPlay: (
-    card: HandCard,
-    cardRef: React.RefObject<HTMLDivElement | null>
-  ) => void;
-  cardWidth: number;
-  cardHeight: number;
-  allowedCards?: CardType[];
-}
-
-export const CardsHand = React.memo(function CardsHand({
-  hand,
-  onPlay,
-  cardWidth,
-  cardHeight,
-  allowedCards,
-}: CardsHandProps) {
+export function Hand({ hand, onPlay, validCards }: HandProps) {
+  const cardWidth = 96;
+  const cardHeight = 144;
   const total = hand.length;
   const [containerWidth, setContainerWidth] = React.useState<number>(0);
   const areaRef = React.useRef<HTMLDivElement>(null);
@@ -68,42 +52,37 @@ export const CardsHand = React.memo(function CardsHand({
     [total, startCenter, spacing]
   );
 
-  const handKey = React.useMemo(() => hand.map((h) => h.uid).join(","), [hand]);
-
   return (
     <div ref={areaRef} className="relative w-full h-full pointer-events-auto">
       <AnimatePresence>
         {hand.map((card, index) => (
-          <MemoizedHandCard
-            key={card.uid}
+          <HandCard
+            key={card}
             card={card}
             index={index}
             xOffset={offsets[index] || 0}
             onPlay={onPlay}
             cardWidth={cardWidth}
             cardHeight={cardHeight}
-            allowed={allowedCards?.includes(card.code) ?? true}
+            allowed={validCards.includes(card)}
           />
         ))}
       </AnimatePresence>
     </div>
   );
-});
+}
 
 interface HandCardProps {
-  card: HandCard;
+  card: CardType;
   index: number;
   xOffset: number;
-  onPlay: (
-    card: HandCard,
-    cardRef: React.RefObject<HTMLDivElement | null>
-  ) => void;
+  onPlay: (card: CardType) => void;
   cardWidth: number;
   cardHeight: number;
   allowed: boolean;
 }
 
-function HandCardComponent({
+function HandCard({
   card,
   index,
   xOffset,
@@ -138,13 +117,13 @@ function HandCardComponent({
     >
       <Card
         ref={innerRef}
-        card={card.code}
+        card={card}
         className={`${allowed ? "cursor-pointer" : ""}`}
         onClick={() => {
           if (allowed) {
             setLifted(true);
             setTimeout(() => {
-              onPlay(card, innerRef);
+              onPlay(card);
               setLifted(false);
             }, 100);
           }
@@ -153,19 +132,3 @@ function HandCardComponent({
     </motion.div>
   );
 }
-
-// shallow compare useful props for a hand card to avoid rerenders
-const handCardComparator = (prev: HandCardProps, next: HandCardProps) => {
-  return (
-    prev.card.uid === next.card.uid &&
-    prev.xOffset === next.xOffset &&
-    prev.allowed === next.allowed &&
-    prev.cardWidth === next.cardWidth &&
-    prev.cardHeight === next.cardHeight
-  );
-};
-
-export const MemoizedHandCard = React.memo(
-  HandCardComponent,
-  handCardComparator
-);

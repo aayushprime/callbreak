@@ -1,14 +1,11 @@
 "use client";
 
-import { useState } from "react";
-
 type PlayerData = {
   name: string;
   results: number[];
 };
 
 export const Books = ({ onClose }: { onClose: () => void }) => {
-
   const players: PlayerData[] = [
     { name: "P1", results: [1.2, 2.0, 1.5, 3.0, 2.5] },
     { name: "P2", results: [1.0, 1.5, 2.0, 2.0, 1.5] },
@@ -18,14 +15,10 @@ export const Books = ({ onClose }: { onClose: () => void }) => {
 
   const totalRounds = players[0].results.length;
 
-  
-
   return (
     <div className="fixed inset-0 flex items-center justify-center z-50">
       {/* Darker, semi-transparent background */}
-      <div
-        className="absolute inset-0 bg-black/50 backdrop-blur-md"
-      ></div>
+      <div className="absolute inset-0 bg-black/50 backdrop-blur-md"></div>
 
       {/* Popup with a darker theme */}
       <div className="relative bg-green-800 rounded-3xl shadow-lg border border-green-600 p-6 w-[95%] max-w-5xl text-white">

@@ -7,113 +7,103 @@ import { Popup } from "@/components/ui/Popup";
 import { useGame } from "@/contexts/GameContext";
 import { useToast } from "@/contexts/ToastContext";
 import { useRoom } from "@/contexts/RoomContext";
-import { Room, RoomConnectionStatus } from "@/lib/room";
 import { usePathname } from "next/navigation";
 import { generateRandomCode } from "@/lib/utils";
 import { usePlayerName } from "@/hooks/usePlayerName";
+import RoomService from "@/lib/RoomService";
 
 const MAX_RETRIES = 5;
 
+function useRoomManager() {
+  const { roomState, dispatch } = useRoom();
+  const { setScene } = useGame();
+  const { addToast } = useToast();
+  const [retryCount, setRetryCount] = useState(0);
+
+  const connectToRoom = useCallback(
+    (id: string, name: string, roomId: string, noCreate: boolean = false) => {
+      dispatch({ type: "SET_ROOM", payload: { id, name, roomId } });
+      RoomService.connect(id, name, roomId, noCreate);
+    },
+    [dispatch]
+  );
+
+  useEffect(() => {
+    const handleOpen = () => {
+      window.history.pushState({}, "", roomState.roomId);
+      setScene("lobby");
+    };
+
+    const handleClose = ({ wasClean }: { wasClean: boolean }) => {
+      if (!wasClean && retryCount < MAX_RETRIES) {
+        const timeout = Math.pow(2, retryCount) * 1000;
+        setTimeout(() => {
+          setRetryCount(retryCount + 1);
+          RoomService.connect(roomState.id, roomState.name, roomState.roomId);
+        }, timeout);
+      }
+    };
+
+    const handleError = ({ message }: { message: string }) => {
+      addToast(message);
+      RoomService.disconnect();
+      dispatch({ type: "RESET" });
+    };
+
+    RoomService.on("open", handleOpen);
+    RoomService.on("close", handleClose);
+    RoomService.on("error", handleError);
+
+    return () => {
+      RoomService.off("open", handleOpen);
+      RoomService.off("close", handleClose);
+      RoomService.off("error", handleError);
+    };
+  }, [roomState, retryCount, setScene, addToast, dispatch]);
+
+  return { connectToRoom, roomState };
+}
+
 export function MainScreen() {
   const containerRef = useRef<HTMLDivElement>(null);
-  const [playerName, setPlayerName] = usePlayerName();
-
-  const { scene, setScene } = useGame();
-  const { room, setRoom } = useRoom();
-  const { addToast } = useToast();
+  const [playerName] = usePlayerName();
+  const { connectToRoom, roomState } = useRoomManager();
+  const { status } = roomState;
 
   const [isPlayerPopupOpen, setPlayerPopupOpen] = useState(false);
   const [roomCode, setRoomCode] = useState("");
   const inputRef = useRef<HTMLInputElement>(null);
 
-  const [status, setStatus] = useState<RoomConnectionStatus>("disconnected");
-  const [retryCount, setRetryCount] = useState(0);
-
   const pathname = usePathname();
 
-  const handleConnect = useCallback(
-    (newRoom: Room) => {
-      setRoom(newRoom);
-      newRoom.connect();
-      setStatus("connecting");
-      setRetryCount(0);
-    },
-    [setRoom]
-  );
-
-  // Effect to handle joining from a URL or transitioning to the lobby
   useEffect(() => {
     const roomIdFromPath = pathname.substring(1);
-
-    if (room && room.roomId === roomIdFromPath && status === "connected") {
-      setScene("lobby");
-    } else if (roomIdFromPath && !room && playerName) {
-      const newRoom = new Room(playerName, playerName, roomIdFromPath, true);
-      handleConnect(newRoom);
-      setPlayerPopupOpen(true);
+    if (roomIdFromPath && playerName && !roomState.manualDisconnect) {
+      connectToRoom(playerName, playerName, roomIdFromPath, true);
     }
-  }, [pathname, room, status, playerName, handleConnect, setScene]);
+  }, [pathname, playerName, connectToRoom, roomState.manualDisconnect]);
 
-  // Effect to subscribe to room events
   useEffect(() => {
-    if (!room) return;
-
-    const unsubscribe = room.subscribe((event, ack) => {
-      console.log("Event received:", event);
-      if (event.type === "status") {
-        ack();
-        setStatus(event.payload);
-      } else if (event.type === "open") {
-        ack();
-        setPlayerPopupOpen(false);
-
-        window.history.pushState({}, "", room.roomId);
-        setScene("lobby");
-      } else if (event.type === "error") {
-        ack();
-        addToast(event.payload.message);
-        handleCancel();
-      } else if (event.type === "close") {
-        ack();
-        if (!event.payload.wasClean && retryCount < MAX_RETRIES) {
-          const timeout = Math.pow(2, retryCount) * 1000;
-          setTimeout(() => {
-            setRetryCount(retryCount + 1);
-            room.retry();
-          }, timeout);
-        }
-      } else {
-        ack();
-        console.log("[Main] Unhandled event:", event);
-      }
-    });
-
-    return unsubscribe;
-  }, [room, retryCount]);
+    const roomIdFromPath = pathname.substring(1);
+    if (!roomIdFromPath) {
+      RoomService.disconnect();
+    }
+  }, [pathname]);
 
   const handleCreateRoom = () => {
-    const newRoom = new Room(
-      playerName,
-      playerName,
-      "G-" + generateRandomCode()
-    );
-    handleConnect(newRoom);
+    const newRoomId = "G-" + generateRandomCode();
+    connectToRoom(playerName, playerName, newRoomId);
   };
 
   const handleJoinRoom = () => {
     if (!roomCode) return;
-    const newRoom = new Room(playerName, playerName, roomCode, true);
-    handleConnect(newRoom);
+    connectToRoom(playerName, playerName, roomCode, true);
     setPlayerPopupOpen(true);
   };
 
   const handleCancel = () => {
-    if (room) {
-      room.disconnect();
-    }
-    setRoom(undefined);
+    RoomService.disconnect();
     setPlayerPopupOpen(false);
-    setRetryCount(0);
   };
 
   return (
@@ -124,7 +114,7 @@ export function MainScreen() {
       <div className="flex flex-row absolute left-0 top-2">
         <div className="flex flex-row items-center">
           <Profile className="m-5 mr-2" />
-          {<span className="font-worksans">{playerName}</span>} {/* Player name display */}
+          {<span className="font-worksans">{playerName}</span>}
         </div>
       </div>
       <Image

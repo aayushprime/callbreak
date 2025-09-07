@@ -1,5 +1,6 @@
 import { motion } from "framer-motion";
-import { HandCard, PlayerId, parseCard } from "./Hand";
+import { HandCard } from "./Hand";
+import { parseCard } from "../ui/Card";
 
 export function TrickCard({
   spot,
@@ -8,7 +9,7 @@ export function TrickCard({
 }: {
   spot: "bottom" | "left" | "top" | "right";
   card: HandCard;
-  collectTo: PlayerId | null;
+  collectTo: any | null;
 }) {
   // position within 64x64 box
   const pos: Record<string, React.CSSProperties> = {

@@ -37,11 +37,8 @@ export class CallbreakGame extends Game {
 	}
 
 	public onReconnect(player: Player): void {
-		// TODO: reconnect player flow test
 		this.disconnected.delete(player.id);
-		if (this.currentPlayerId() === player.id) {
-			this.resyncPlayer(player.id);
-		}
+		this.resyncPlayer(player.id);
 	}
 
 	private resyncPlayer(playerId: string) {
@@ -72,6 +69,10 @@ export class CallbreakGame extends Game {
 		console.log(`CallbreakGame received message from ${player.id}:`, message);
 		try {
 			switch (message.type) {
+				case 'requestGameState': {
+					this.resyncPlayer(player.id);
+					break;
+				}
 				case 'bid': {
 					const { bid } = message.payload as BidMessage;
 					if (this.state.phase !== 'bidding') throw new Error('Not bidding phase');

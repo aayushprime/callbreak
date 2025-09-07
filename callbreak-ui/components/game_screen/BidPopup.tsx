@@ -1,12 +1,16 @@
 "use client";
 import { useState } from "react";
 
-export const BidPopup = ({ onBid }: { onBid: (bid: number) => void }) => {
+export const BidPopup = ({
+  onBidSubmit,
+}: {
+  onBidSubmit: (bid: number) => void;
+}) => {
   const [selectedBid, setSelectedBid] = useState<number | null>(null);
 
   const handleBid = (bid: number) => {
-    setSelectedBid(bid); // mark the selected button
-    onBid(bid); // trigger callback
+    setSelectedBid(bid);
+    onBidSubmit(bid);
   };
 
   return (
