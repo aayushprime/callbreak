@@ -1,9 +1,6 @@
 import { Card, createStandardDeck, drawCards } from "./cards.js";
 import { getSuit, getRankValue, beats, TRUMP_SUIT } from "./logic.js";
-
-interface Player {
-  id: string;
-}
+import { Player } from "./player.js";
 
 export interface RoundHistory {
   roundNumber: number;
@@ -12,6 +9,30 @@ export interface RoundHistory {
   playedTricks: { player: string; card: Card }[][];
   biddingOrder: string[];
 }
+
+export interface ClientRoundHistory {
+  roundNumber: number;
+  bids: Record<string, number>;
+  tricksWon: Record<string, number>;
+  playedTricks: { player: string; card: Card }[][];
+  biddingOrder: string[];
+}
+
+export type GameStateSnapshot = {
+    players: string[];
+    you: string;
+    playerCards: Card[];
+    turn: number;
+    phase: "bidding" | "playing" | "round_over" | "game_over";
+    roundNumber: number;
+    bids: Record<string, number>;
+    playedCards: { player: string; card: Card }[];
+    tricksWon: Record<string, number>;
+    validCards: Card[];
+    roundHistory: ClientRoundHistory[];
+    points: Record<string, number>;
+    winner: string | null;
+};
 
 const TOTAL_ROUNDS = 1;
 
@@ -67,7 +88,7 @@ export class CallbreakState {
     this.roundNumber += 1;
     let deck = createStandardDeck(true);
     for (const player of this.players) {
-      this.playerCards[player.id] = drawCards(deck, 1);
+      this.playerCards[player.id] = drawCards(deck, 13);
       this.playerCards[player.id].sort((a, b) => {
         const suitA = getSuit(a);
         const suitB = getSuit(b);
@@ -243,5 +264,50 @@ export class CallbreakState {
       biddingOrder: [...this.currentBiddingOrder],
     };
     this.roundHistory.push(historyEntry);
+  }
+
+  toJSON() {
+    return {
+      players: this.players,
+      playerCards: this.playerCards,
+      turn: this.turn,
+      winner: this.winner,
+      roundNumber: this.roundNumber,
+      bids: Object.fromEntries(this.bids),
+      points: Object.fromEntries(this.points),
+      tricksWon: Object.fromEntries(this.tricksWon),
+      phase: this.phase,
+      cardsHistory: this.cardsHistory,
+      playedCards: this.playedCards,
+      trickLeadPlayerIndex: this.trickLeadPlayerIndex,
+      roundHistory: this.roundHistory.map(rh => ({
+        ...rh,
+        bids: Object.fromEntries(rh.bids),
+        tricksWon: Object.fromEntries(rh.tricksWon),
+      })),
+      currentBiddingOrder: this.currentBiddingOrder,
+    };
+  }
+
+  static fromJSON(data: any): CallbreakState {
+    const state = new CallbreakState(data.players);
+    state.playerCards = data.playerCards;
+    state.turn = data.turn;
+    state.winner = data.winner;
+    state.roundNumber = data.roundNumber;
+    state.bids = new Map(Object.entries(data.bids));
+    state.points = new Map(Object.entries(data.points));
+    state.tricksWon = new Map(Object.entries(data.tricksWon));
+    state.phase = data.phase;
+    state.cardsHistory = data.cardsHistory;
+    state.playedCards = data.playedCards;
+    state.trickLeadPlayerIndex = data.trickLeadPlayerIndex;
+    state.roundHistory = data.roundHistory.map((rh: any) => ({
+      ...rh,
+      bids: new Map(Object.entries(rh.bids)),
+      tricksWon: new Map(Object.entries(rh.tricksWon)),
+    }));
+    state.currentBiddingOrder = data.currentBiddingOrder;
+    return state;
   }
 }

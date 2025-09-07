@@ -1,22 +1,26 @@
-import { Room } from './room.js';
 import { Player } from './player.js';
-import { Card, beats, getSuit, getRankValue, TRUMP_SUIT, computeValidCards } from 'common';
+import { Card } from './cards.js';
+import { computeValidCards } from './logic.js';
+import { EventEmitter } from 'events';
 
-const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
-
-export class Bot extends Player {
+export class Bot extends EventEmitter {
 	isBot: boolean;
 	cards: Card[] = [];
 	private hand: Card[] = [];
+	player: Player;
 
 	constructor(
-		readonly room: Room,
 		id: string,
 		name: string,
 		country: string,
 	) {
-		super(id, name, country);
+		super();
+		this.player = new Player(id, name, country);
 		this.isBot = true;
+	}
+
+	get id() {
+		return this.player.id;
 	}
 
 	// Additional bot-specific methods can be added here
@@ -31,7 +35,7 @@ export class Bot extends Player {
 			const { playedCards } = message.payload;
 			const validCards = computeValidCards(
 				this.hand,
-				playedCards.map((p: any) => p.card),
+				playedCards.map((p: { player: Player, card: Card }) => p.card),
 			);
 
 			const cardToPlay = validCards[Math.floor(Math.random() * validCards.length)];
@@ -40,26 +44,20 @@ export class Bot extends Player {
 	}
 
 	private bid(bid: number) {
-		this.room.handleMessage(this.id, {
+		this.emit('action', {
 			scope: 'game',
 			type: 'bid',
 			payload: { bid },
 		});
 	}
 
-	// computeValidCards moved to common.logic
-
 	private playCard(card: Card) {
 		// update local hand and send play message to room
 		this.cards = this.cards.filter((c) => c !== card);
-		this.room.handleMessage(this.id, {
+		this.emit('action', {
 			scope: 'game',
 			type: 'playCard',
 			payload: { card },
 		});
-	}
-
-	onRoomMessage(message: any): void {
-		console.log(`Bot ${this.name} received room message:`, message);
 	}
 }

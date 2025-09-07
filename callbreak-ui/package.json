@@ -10,7 +10,7 @@
   },
   "dependencies": {
     "clsx": "^2.1.1",
-    "common": "workspace:*",
+    "game-logic": "workspace:*",
     "framer-motion": "^12.23.12",
     "next": "15.4.6",
     "react": "19.1.0",

@@ -1,5 +1,5 @@
 {
-  "name": "common",
+  "name": "game-logic",
   "version": "1.0.0",
   "type": "module",
   "private": true,
@@ -9,12 +9,20 @@
     ".": {
       "types": "./es6/index.d.ts",
       "default": "./es6/index.js"
+    },
+    "./*": {
+      "types": "./es6/*.d.ts",
+      "default": "./es6/*.js"
     }
   },
   "scripts": {
     "build": "tsc -p ."
   },
   "devDependencies": {
-    "typescript": "^5.5.0"
+    "typescript": "^5.5.0",
+    "@types/node": "^20"
+  },
+  "dependencies": {
+    "events": "^3.3.0"
   }
 }

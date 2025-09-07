@@ -1,23 +1,13 @@
 "use client";
 
-import { RoundHistory } from "common/dist/state";
-
-type Player = {
-  id: string;
-  name: string;
-};
+import { ClientRoundHistory, Player } from "game-logic";
 
 import { ReactNode } from "react";
-
-type Player = {
-  id: string;
-  name: string;
-};
 
 type BooksProps = {
   onClose: () => void;
   players: Player[];
-  roundHistory: RoundHistory[];
+  roundHistory: ClientRoundHistory[];
   points: Record<string, number>;
   showCloseButton?: boolean;
   footer?: ReactNode;

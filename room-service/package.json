@@ -3,6 +3,18 @@
 	"version": "1.0.0",
 	"type": "module",
 	"private": true,
+  "main": "./es6/index.js",
+  "types": "./es6/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./es6/index.d.ts",
+      "default": "./es6/index.js"
+    },
+    "./*": {
+      "types": "./es6/*.d.ts",
+      "default": "./es6/*.js"
+    }
+  },
 	"scripts": {
 		"dev": "wrangler dev",
 		"start": "wrangler dev",
@@ -18,7 +30,6 @@
 		"wrangler": "^3.57.2"
 	},
 	"dependencies": {
-		"uWebSockets.js": "uNetworking/uWebSockets.js#v20.43.0",
-		"common": "workspace:*"
+		"game-logic": "workspace:*"
 	}
 }

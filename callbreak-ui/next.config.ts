@@ -1,15 +1,9 @@
 import type { NextConfig } from "next";
 
-const nextConfig: NextConfig = {
-  /* config options here */
-  reactStrictMode: false,
+const nextConfig = {
+  transpilePackages: ["common", "game-logic"],
   images: {
-    remotePatterns: [
-      {
-        protocol: "https",
-        hostname: "www.gravatar.com",
-      },
-    ],
+    domains: ["www.gravatar.com"],
   },
 };
 

@@ -1,7 +1,6 @@
-export type Player = {
-  id: string;
-  name: string;
-  country: string;
+import { Player as GamePlayer } from "game-logic";
+
+export type Player = GamePlayer & {
   picture: string;
 };
 
@@ -14,4 +13,5 @@ export interface RoomState {
   status: "disconnected" | "connecting" | "connected" | "error";
   errorMessage: string | null;
   manualDisconnect: boolean;
+  isLocal: boolean;
 }

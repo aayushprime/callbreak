@@ -1,4 +1,6 @@
 packages:
-  - callbreak-ui
-  - room-service
-  - common
+  - 'callbreak-ui'
+  - 'room-service'
+  - 'game-logic'
+  - 'server'
+

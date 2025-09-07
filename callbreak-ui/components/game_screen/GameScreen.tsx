@@ -4,7 +4,7 @@ import { Profile } from "@/components/game_screen/Profile";
 import { useGame } from "@/contexts/GameContext";
 import { useRoom } from "@/contexts/RoomContext";
 import { useToast } from "@/contexts/ToastContext";
-import { Card } from "common";
+import { Card, GameStateSnapshot, Player } from "game-logic";
 import {
   useEffect,
   useState,
@@ -15,20 +15,18 @@ import {
 import { BidPopup } from "./BidPopup";
 import { Books } from "./Books";
 import { Trick } from "./Trick";
-import RoomService from "@/lib/RoomService";
 import { SelfProfile } from "./SelfProfile";
 import { Button } from "../ui/Button";
-import { GameEndScreen } from "./GameEndScreen";
 import { useRouter } from "next/navigation";
 
 export function GameScreen() {
-  const { roomState, dispatch } = useRoom();
+  const { roomState, dispatch, roomService } = useRoom();
   const router = useRouter();
 
   const { addToast } = useToast();
   const { setScene } = useGame();
 
-  const [gameState, setGameState] = useState<any>(null);
+  const [gameState, setGameState] = useState<GameStateSnapshot | null>(null);
   const [isAnimatingTrick, setIsAnimatingTrick] = useState(false);
   const [showBidPopup, setShowBidPopup] = useState(false);
   const [showBooksPopup, setShowBooksPopup] = useState(false);
@@ -61,8 +59,8 @@ export function GameScreen() {
     setTrickWinner(null);
     setTrickCount((c) => c + 1);
     setIsAnimatingTrick(false);
-    RoomService.sendGameMessage("requestGameState", {});
-  }, []);
+    roomService.send({ type: "requestGameState", scope: "game", payload: {} });
+  }, [roomService]);
 
   useLayoutEffect(() => {
     const positions: Record<string, { x: number; y: number }> = {};
@@ -93,7 +91,7 @@ export function GameScreen() {
   }, [trickWinner, profilePositions]);
 
   useEffect(() => {
-    const handleGameState = (state: any) => {
+    const handleGameState = (state: GameStateSnapshot) => {
       if (isAnimatingTrick) return;
       setGameState(state);
     };
@@ -111,6 +109,7 @@ export function GameScreen() {
     }) => {
       if (reason === "completed" && winnerId) {
         setGameResult({ winnerId });
+        setShowBooksPopup(true);
       } else {
         addToast(`Game ended: ${reason}`);
         setScene("lobby");
@@ -128,10 +127,13 @@ export function GameScreen() {
       playerId: string;
       bid: number;
     }) => {
-      setGameState((prevState: any) => ({
-        ...prevState,
-        bids: { ...prevState.bids, [playerId]: bid },
-      }));
+      setGameState((prevState) => {
+        if (!prevState) return null;
+        return {
+          ...prevState,
+          bids: { ...prevState.bids, [playerId]: bid },
+        };
+      });
     };
 
     const handlePlayerCard = ({
@@ -141,7 +143,7 @@ export function GameScreen() {
       playerId: string;
       card: Card;
     }) => {
-      setGameState((prevState: any) => {
+      setGameState((prevState) => {
         if (!prevState) return null;
         if (prevState.playedCards.some((p: any) => p.card === card)) {
           return prevState;
@@ -155,7 +157,7 @@ export function GameScreen() {
             { player: playerId, card },
           ];
         }
-        return { ...prevState, playedCards: newPlayedCards };
+        return { ...prevState, playedCards: [...newPlayedCards] };
       });
     };
 
@@ -170,28 +172,28 @@ export function GameScreen() {
       setTurnTimer(data);
     };
 
-    RoomService.on("gameState", handleGameState);
-    RoomService.on("getBid", handleGetBid);
-    RoomService.on("gameEnded", handleGameEnded);
-    RoomService.on("bidMade", handleBidMade);
-    RoomService.on("playerBid", handlePlayerBid);
-    RoomService.on("playerCard", handlePlayerCard);
-    RoomService.on("trickWon", handleTrickWon);
-    RoomService.on("turnTimer", handleTurnTimer);
+    roomService.on("gameState", handleGameState);
+    roomService.on("getBid", handleGetBid);
+    roomService.on("gameEnded", handleGameEnded);
+    roomService.on("bidMade", handleBidMade);
+    roomService.on("playerBid", handlePlayerBid);
+    roomService.on("playerCard", handlePlayerCard);
+    roomService.on("trickWon", handleTrickWon);
+    roomService.on("turnTimer", handleTurnTimer);
 
-    RoomService.sendGameMessage("requestGameState", {});
+    roomService.send({ type: "requestGameState", scope: "game", payload: {} });
 
     return () => {
-      RoomService.off("gameState", handleGameState);
-      RoomService.off("getBid", handleGetBid);
-      RoomService.off("gameEnded", handleGameEnded);
-      RoomService.off("bidMade", handleBidMade);
-      RoomService.off("playerBid", handlePlayerBid);
-      RoomService.off("playerCard", handlePlayerCard);
-      RoomService.off("trickWon", handleTrickWon);
-      RoomService.off("turnTimer", handleTurnTimer);
+      roomService.off("gameState", handleGameState);
+      roomService.off("getBid", handleGetBid);
+      roomService.off("gameEnded", handleGameEnded);
+      roomService.off("bidMade", handleBidMade);
+      roomService.off("playerBid", handlePlayerBid);
+      roomService.off("playerCard", handlePlayerCard);
+      roomService.off("trickWon", handleTrickWon);
+      roomService.off("turnTimer", handleTurnTimer);
     };
-  }, [addToast, setScene, isAnimatingTrick, handleWinAnimationComplete]);
+  }, [addToast, setScene, isAnimatingTrick, handleWinAnimationComplete, roomService]);
 
   useEffect(() => {
     if (!turnTimer) return;
@@ -215,25 +217,25 @@ export function GameScreen() {
   }, [turnTimer]);
 
   const handleBidSubmit = (bid: number) => {
-    RoomService.sendGameMessage("bid", { bid });
+    roomService.send({ type: "bid", scope: "game", payload: { bid } });
     setShowBidPopup(false);
   };
 
   const handlePlayCard = useCallback(
-    (card: Card, cardRef: React.RefObject<HTMLDivElement>) => {
+    (card: Card, cardRef: React.RefObject<HTMLDivElement | null>) => {
       if (cardRef.current) {
         setAnimatingCard({
           card,
           rect: cardRef.current.getBoundingClientRect(),
         });
       }
-      setGameState((prevState) => ({
-        ...prevState,
-        validCards: [],
-      }));
-      RoomService.sendGameMessage("playCard", { card });
+      setGameState((prevState) => {
+        if (!prevState) return null;
+        return { ...prevState, validCards: [] };
+      });
+      roomService.send({ type: "playCard", scope: "game", payload: { card } });
     },
-    []
+    [roomService]
   );
 
   if (!gameState) {
@@ -256,41 +258,41 @@ export function GameScreen() {
   const players = playerIds.map((id: string) =>
     roomState.players.find((p) => p.id === id)
   );
-  const youPlayer = players[yourPlayerIndex] || {};
+  const youPlayer = players[yourPlayerIndex] || { id: "" };
 
   const handleMainMenu = () => {
-    RoomService.disconnect();
+    roomService.disconnect();
     dispatch({ type: "MANUAL_DISCONNECT" });
     router.push("/");
     setScene("menu");
   };
-
-  const winner = gameResult
-    ? players.find((p) => p.id === gameResult.winnerId)
-    : null;
 
   return (
     <div className="game-screen relative h-full bg-green-800 text-white">
       {/* Opponents */}
       <div className="absolute top-1/2 left-5 -translate-y-1/2">
         <Profile
-          ref={(el) =>
-            (profileRefs.current[players[(yourPlayerIndex + 1) % 4]?.id ?? ""] =
-              el)
-          }
+          ref={(el) => {
+            const player = players[(yourPlayerIndex + 1) % 4];
+            if (player) profileRefs.current[player.id] = el;
+          }}
           {...(players[(yourPlayerIndex + 1) % 4] || {})}
-          bid={bids[players[(yourPlayerIndex + 1) % 4]?.id]}
-          tricksWon={tricksWon[players[(yourPlayerIndex + 1) % 4]?.id]}
+          bid={bids[players[(yourPlayerIndex + 1) % 4]?.id ?? ""]}
+          tricksWon={tricksWon[players[(yourPlayerIndex + 1) % 4]?.id ?? ""]}
           showStats={true}
           active={turn === (yourPlayerIndex + 1) % 4}
           totalTime={
             turnTimer?.playerId === players[(yourPlayerIndex + 1) % 4]?.id
-              ? 30
+              ? turnTimer.msLeft === -1
+                ? -1
+                : 30
               : 0
           }
           turnTime={
             turnTimer?.playerId === players[(yourPlayerIndex + 1) % 4]?.id
-              ? turnTimer.msLeft / 1000
+              ? turnTimer.msLeft === -1
+                ? -1
+                : (turnTimer?.msLeft ?? 0) / 1000
               : 0
           }
           pillPosition="right"
@@ -298,23 +300,27 @@ export function GameScreen() {
       </div>
       <div className="absolute top-5 left-1/2 -translate-x-1/2">
         <Profile
-          ref={(el) =>
-            (profileRefs.current[players[(yourPlayerIndex + 2) % 4]?.id ?? ""] =
-              el)
-          }
+          ref={(el) => {
+            const player = players[(yourPlayerIndex + 2) % 4];
+            if (player) profileRefs.current[player.id] = el;
+          }}
           {...(players[(yourPlayerIndex + 2) % 4] || {})}
-          bid={bids[players[(yourPlayerIndex + 2) % 4]?.id]}
-          tricksWon={tricksWon[players[(yourPlayerIndex + 2) % 4]?.id]}
+          bid={bids[players[(yourPlayerIndex + 2) % 4]?.id ?? ""]}
+          tricksWon={tricksWon[players[(yourPlayerIndex + 2) % 4]?.id ?? ""]}
           showStats={true}
           active={turn === (yourPlayerIndex + 2) % 4}
           totalTime={
             turnTimer?.playerId === players[(yourPlayerIndex + 2) % 4]?.id
-              ? 30
+              ? turnTimer.msLeft === -1
+                ? -1
+                : 30
               : 0
           }
           turnTime={
             turnTimer?.playerId === players[(yourPlayerIndex + 2) % 4]?.id
-              ? turnTimer.msLeft / 1000
+              ? turnTimer.msLeft === -1
+                ? -1
+                : (turnTimer?.msLeft ?? 0) / 1000
               : 0
           }
           pillPosition="right"
@@ -322,23 +328,27 @@ export function GameScreen() {
       </div>
       <div className="absolute top-1/2 right-5 -translate-y-1/2">
         <Profile
-          ref={(el) =>
-            (profileRefs.current[players[(yourPlayerIndex + 3) % 4]?.id ?? ""] =
-              el)
-          }
+          ref={(el) => {
+            const player = players[(yourPlayerIndex + 3) % 4];
+            if (player) profileRefs.current[player.id] = el;
+          }}
           {...(players[(yourPlayerIndex + 3) % 4] || {})}
-          bid={bids[players[(yourPlayerIndex + 3) % 4]?.id]}
-          tricksWon={tricksWon[players[(yourPlayerIndex + 3) % 4]?.id]}
+          bid={bids[players[(yourPlayerIndex + 3) % 4]?.id ?? ""]}
+          tricksWon={tricksWon[players[(yourPlayerIndex + 3) % 4]?.id ?? ""]}
           showStats={true}
           active={turn === (yourPlayerIndex + 3) % 4}
           totalTime={
             turnTimer?.playerId === players[(yourPlayerIndex + 3) % 4]?.id
-              ? 30
+              ? turnTimer.msLeft === -1
+                ? -1
+                : 30
               : 0
           }
           turnTime={
             turnTimer?.playerId === players[(yourPlayerIndex + 3) % 4]?.id
-              ? turnTimer.msLeft / 1000
+              ? turnTimer.msLeft === -1
+                ? -1
+                : (turnTimer?.msLeft ?? 0) / 1000
               : 0
           }
           pillPosition="left"
@@ -346,10 +356,12 @@ export function GameScreen() {
       </div>
 
       <SelfProfile
-        ref={(el) => (profileRefs.current[youPlayer.id] = el)}
+        ref={(el) => {
+          if (youPlayer) profileRefs.current[youPlayer.id] = el;
+        }}
         {...youPlayer}
-        bid={bids[youPlayer.id]}
-        tricksWon={tricksWon[youPlayer.id]}
+        bid={bids[youPlayer.id ?? ""]}
+        tricksWon={tricksWon[youPlayer.id ?? ""]}
         active={turn === yourPlayerIndex}
         className="absolute bottom-8 left-16 -translate-x-1/2"
       />
@@ -406,36 +418,28 @@ export function GameScreen() {
       {showBooksPopup && (
         <Books
           onClose={() => setShowBooksPopup(false)}
-          players={players}
+          players={players.filter((p) => p) as Player[]}
           roundHistory={gameState.roundHistory}
           points={gameState.points}
-        />
-      )}
-
-      {winner && (
-        <Books
-          onClose={() => {}}
-          players={players}
-          roundHistory={gameState.roundHistory}
-          points={gameState.points}
-          showCloseButton={false}
-          winnerId={winner.id}
+          winnerId={gameResult?.winnerId}
           footer={
-            <Button
-              title="Main Menu"
-              onClick={handleMainMenu}
-              className="bg-red-500 hover:bg-red-600"
-            />
+            gameResult && (
+              <Button
+                title="Main Menu"
+                onClick={handleMainMenu}
+                className="bg-red-500 hover:bg-red-600"
+              />
+            )
           }
         />
       )}
 
-      {turnTimer?.playerId === youPlayer.id && (
+      {turnTimer?.playerId === youPlayer.id && turnTimer.msLeft !== -1 && (
         <div className="absolute bottom-0 left-0 w-full h-2 bg-slate-600">
           <div
             className="h-full bg-blue-500"
             style={{
-              width: `${(turnTimer.msLeft / 30000) * 100}%`,
+              width: `${((turnTimer?.msLeft ?? 0) / 30000) * 100}%`,
             }}
           />
         </div>

@@ -1,10 +1,12 @@
 "use client";
 import React, { createContext, useContext, useReducer, useEffect } from "react";
-import RoomService, { RoomConnectionStatus } from "@/lib/RoomService";
+import RoomService from "@/lib/RoomService";
+import LocalRoomService from "@/lib/LocalRoomService";
 import { Player, RoomState } from "@/lib/RoomState";
+import { RoomService as BaseRoomService, RoomConnectionStatus } from "game-logic";
 
 type RoomAction =
-  | { type: "SET_ROOM"; payload: { id: string; name: string; roomId: string } }
+  | { type: "SET_ROOM"; payload: { id: string; name: string; roomId: string; isLocal?: boolean } }
   | { type: "SET_STATUS"; payload: RoomConnectionStatus }
   | { type: "SET_ERROR"; payload: string }
   | { type: "SET_PLAYERS"; payload: Player[] }
@@ -23,12 +25,13 @@ const initialState: RoomState = {
   status: "disconnected",
   errorMessage: null,
   manualDisconnect: false,
+  isLocal: false,
 };
 
 function roomReducer(state: RoomState, action: RoomAction): RoomState {
   switch (action.type) {
     case "SET_ROOM":
-      return { ...initialState, ...action.payload, manualDisconnect: false };
+      return { ...initialState, ...action.payload, manualDisconnect: false, isLocal: !!action.payload.isLocal, status: "connecting" };
     case "SET_STATUS":
       return { ...state, status: action.payload };
     case "SET_ERROR":
@@ -56,15 +59,24 @@ function roomReducer(state: RoomState, action: RoomAction): RoomState {
 type RoomContextType = {
   roomState: RoomState;
   dispatch: React.Dispatch<RoomAction>;
-  roomService: typeof RoomService;
+  roomService: BaseRoomService;
 };
 
 const RoomContext = createContext<RoomContextType | undefined>(undefined);
 
 export function RoomProvider({ children }: { children: React.ReactNode }) {
   const [roomState, dispatch] = useReducer(roomReducer, initialState);
+  const roomService = roomState.isLocal ? LocalRoomService : RoomService;
 
   useEffect(() => {
+    if (roomState.status === 'connecting') {
+      roomService.connect(roomState.id, roomState.name, roomState.roomId);
+    }
+  }, [roomState.status, roomState.id, roomState.name, roomState.roomId, roomService]);
+
+  useEffect(() => {
+    const service = roomState.isLocal ? LocalRoomService : RoomService;
+
     const handleStatusChange = (status: RoomConnectionStatus) => {
       dispatch({ type: "SET_STATUS", payload: status });
     };
@@ -90,25 +102,25 @@ export function RoomProvider({ children }: { children: React.ReactNode }) {
       dispatch({ type: "SET_HOST", payload: newHostId });
     };
 
-    RoomService.on("status", handleStatusChange);
-    RoomService.on("error", handleError);
-    RoomService.on("welcome", handleWelcome);
-    RoomService.on("playerJoined", handlePlayerJoined);
-    RoomService.on("playerLeft", handlePlayerLeft);
-    RoomService.on("hostChanged", handleHostChanged);
+    service.on("status", handleStatusChange);
+    service.on("error", handleError);
+    service.on("welcome", handleWelcome);
+    service.on("playerJoined", handlePlayerJoined);
+    service.on("playerLeft", handlePlayerLeft);
+    service.on("hostChanged", handleHostChanged);
 
     return () => {
-      RoomService.off("status", handleStatusChange);
-      RoomService.off("error", handleError);
-      RoomService.off("welcome", handleWelcome);
-      RoomService.off("playerJoined", handlePlayerJoined);
-      RoomService.off("playerLeft", handlePlayerLeft);
-      RoomService.off("hostChanged", handleHostChanged);
+      service.off("status", handleStatusChange);
+      service.off("error", handleError);
+      service.off("welcome", handleWelcome);
+      service.off("playerJoined", handlePlayerJoined);
+      service.off("playerLeft", handlePlayerLeft);
+      service.off("hostChanged", handleHostChanged);
     };
-  }, []);
+  }, [roomState.isLocal]);
 
   return (
-    <RoomContext.Provider value={{ roomState, dispatch, roomService: RoomService }}>
+    <RoomContext.Provider value={{ roomState, dispatch, roomService }}>
       {children}
     </RoomContext.Provider>
   );
@@ -117,5 +129,6 @@ export function RoomProvider({ children }: { children: React.ReactNode }) {
 export function useRoom() {
   const ctx = useContext(RoomContext);
   if (!ctx) throw new Error("useRoom must be used within a RoomProvider");
-  return ctx;
+  const roomService = ctx.roomState.isLocal ? LocalRoomService : RoomService;
+  return { ...ctx, roomService };
 }

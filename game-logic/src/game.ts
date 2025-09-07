@@ -1,11 +1,15 @@
-import { EventEmitter } from 'node:events';
+import { EventEmitter } from 'events';
 import { Player } from './player.js';
 import { ClientMessage } from './message.js';
-import { CallbreakState, Card, getSuit, TRUMP_SUIT, getRankValue, computeValidCards } from 'common';
+import { CallbreakState } from './state.js';
+import { Card } from './cards.js';
+import { computeValidCards } from './logic.js';
 
 function delay(ms: number) {
 	return new Promise((resolve) => setTimeout(resolve, ms));
 }
+
+export type GameFactory = (players: Map<string, Player>) => Game;
 
 // --- Abstract Game Class ---
 export abstract class Game extends EventEmitter {
@@ -29,11 +33,12 @@ export class CallbreakGame extends Game {
 
 	// turn timing
 	private turnDeadlineMs: number = 0;
-	private tickInterval: NodeJS.Timeout | null = null;
 	private timeoutHandle: NodeJS.Timeout | null = null;
+	private timerDisabled: boolean;
 
-	constructor(players: Map<string, Player>) {
+	constructor(players: Map<string, Player>, options: { timer?: boolean } = {}) {
 		super(players);
+		this.timerDisabled = options.timer === false;
 	}
 
 	public onReconnect(player: Player): void {
@@ -112,7 +117,7 @@ export class CallbreakGame extends Game {
 								reason: 'completed',
 								winnerId: this.state.winner,
 							});
-							this.emit('ended', 'completed');
+							this.emit('ended', 'completed', { winnerId: this.state.winner });
 							return;
 						}
 
@@ -165,7 +170,7 @@ export class CallbreakGame extends Game {
 					)
 				: [];
 		return {
-			players: this.state.players.map((p) => p.id),
+			players: this.state.players.map((p: { id: string }) => p.id),
 			you: playerId,
 			playerCards: this.state.playerCards[playerId],
 			turn: this.state.turn,
@@ -175,7 +180,7 @@ export class CallbreakGame extends Game {
 			playedCards: this.state.playedCards,
 			tricksWon: mapToObj(this.state.tricksWon),
 			validCards,
-			roundHistory: this.state.roundHistory.map((rh) => ({
+			roundHistory: this.state.roundHistory.map((rh: any) => ({
 				...rh,
 				bids: mapToObj(rh.bids),
 				tricksWon: mapToObj(rh.tricksWon),
@@ -200,6 +205,10 @@ export class CallbreakGame extends Game {
 	}
 
 	private startTurnTimer() {
+		if (this.timerDisabled) {
+			this.emit('broadcast', 'turnTimer', { playerId: this.currentPlayerId(), msLeft: -1 });
+			return;
+		}
 		this.clearTimers(); // clearTimers now only needs to handle setTimeout
 		const DURATION_MS = 30_000;
 		this.turnDeadlineMs = Date.now() + DURATION_MS;
@@ -239,8 +248,8 @@ export class CallbreakGame extends Game {
 			if (this.isPhase('game_over')) {
 				this.clearTimers();
 				this.sendGameState();
-				this.emit('broadcast', 'gameEnded', { reason: 'completed' });
-				this.emit('ended', 'completed');
+				this.emit('broadcast', 'gameEnded', { reason: 'completed', winnerId: this.state.winner });
+				this.emit('ended', 'completed', { winnerId: this.state.winner });
 				return;
 			}
 
@@ -265,11 +274,11 @@ export class CallbreakGame extends Game {
 
 	// computeValidCards is provided by common.logic
 	private remainingTimeMs(): number {
+		if (this.timerDisabled) return -1;
 		return Math.max(0, this.turnDeadlineMs - Date.now());
 	}
 
 	private clearTimers() {
-		// No longer need to clear tickInterval
 		if (this.timeoutHandle) {
 			clearTimeout(this.timeoutHandle);
 			this.timeoutHandle = null;
@@ -286,27 +295,19 @@ export class CallbreakGame extends Game {
 			this.emit('send', player.id, 'gameState', this.snapshot(player.id));
 		}
 	}
+
+	public toJSON() {
+		return {
+		  state: this.state.toJSON(),
+		  disconnected: Array.from(this.disconnected),
+		  timerDisabled: this.timerDisabled,
+		};
+	  }
+	
+	  public static fromJSON(data: any, players: Map<string, Player>): CallbreakGame {
+		const game = new CallbreakGame(players, { timer: !data.timerDisabled });
+		game.state = CallbreakState.fromJSON(data.state);
+		game.disconnected = new Set(data.disconnected);
+		return game;
+	  }
 }
-
-/* messages
-
-<- gameStart [we start game now!]
-<- gameState [game state force update]
-
-<- getBid [its your turn to bid]
-<- playerBid [someone has bid]
-
-<- turnTimer [time left for your turn]
-<- playerCard [someone/you has played a card]
-<- getCard [its your turn to play a card]
-
-<- gameEnded [room will clear this game after this]
-
--> bid
--> playCard
-
-if someone goes to the lobby url 
-- if they are member, welcome -> game screen
-- if they are not member, error -> main screen
-
- */

@@ -9,10 +9,9 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useToast } from "@/contexts/ToastContext";
 import { usePlayerName } from "@/hooks/usePlayerName";
-import RoomService from "@/lib/RoomService";
 
 export function LobbyScreen() {
-  const { roomState, dispatch } = useRoom();
+  const { roomState, dispatch, roomService } = useRoom();
   const { setScene } = useGame();
   const { addToast } = useToast();
   const [playerName] = usePlayerName();
@@ -40,24 +39,24 @@ export function LobbyScreen() {
       }
     };
 
-    RoomService.on("gameStarted", handleGameStarted);
-    RoomService.on("error", handleError);
+    roomService.on("gameStarted", handleGameStarted);
+    roomService.on("error", handleError);
 
     return () => {
-      RoomService.off("gameStarted", handleGameStarted);
-      RoomService.off("error", handleError);
+      roomService.off("gameStarted", handleGameStarted);
+      roomService.off("error", handleError);
     };
-  }, [setScene, addToast]);
+  }, [setScene, addToast, roomService]);
 
   const handleLeave = () => {
-    RoomService.disconnect();
+    roomService.disconnect();
     dispatch({ type: "MANUAL_DISCONNECT" });
     router.push("/");
     setScene("menu");
   };
 
   const handleBegin = () => {
-    RoomService.send("startGame");
+    roomService.send({ type: "startGame", scope: "room", payload: {} });
   };
 
   return (

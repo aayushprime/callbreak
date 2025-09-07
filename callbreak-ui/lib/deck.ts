@@ -1,2 +1,2 @@
-export type { Card } from "common";
-export { createStandardDeck } from "common";
+export type { Card } from "game-logic";
+export { createStandardDeck } from "game-logic";

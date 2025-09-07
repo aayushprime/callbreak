@@ -1,12 +1,12 @@
 "use client";
 import React, { useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Card as CardType } from "common";
+import { Card as CardType } from "game-logic";
 import { Card } from "../ui/Card";
 
 interface HandProps {
   hand: CardType[];
-  onPlay: (card: CardType, ref: React.RefObject<HTMLDivElement>) => void;
+  onPlay: (card: CardType, ref: React.RefObject<HTMLDivElement | null>) => void;
   validCards: CardType[];
 }
 
@@ -76,7 +76,7 @@ interface HandCardProps {
   card: CardType;
   index: number;
   xOffset: number;
-  onPlay: (card: CardType, ref: React.RefObject<HTMLDivElement>) => void;
+  onPlay: (card: CardType, ref: React.RefObject<HTMLDivElement | null>) => void;
   cardWidth: number;
   cardHeight: number;
   allowed: boolean;

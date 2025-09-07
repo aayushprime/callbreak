@@ -1,5 +1,5 @@
 import { motion, AnimationDefinition } from "framer-motion";
-import { Card as CardType } from "common";
+import { Card as CardType } from "game-logic";
 import { Card } from "../ui/Card";
 import { useState, useLayoutEffect, useRef } from "react";
 

@@ -1,0 +1,22 @@
+{
+  "name": "server",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "main": "es6/index.js",
+  "scripts": {
+    "build": "tsc",
+    "dev": "wrangler dev src/index.ts",
+    "deploy": "wrangler deploy src/index.ts"
+  },
+  "dependencies": {
+    "game-logic": "workspace:*",
+    "room-service": "workspace:*",
+    "uwebsockets.js": "uNetworking/uWebSockets.js#v20.43.0"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20240403.0",
+    "typescript": "^5.4.5",
+    "wrangler": "^3.47.0"
+  }
+}

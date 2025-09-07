@@ -1,9 +1,6 @@
-import uWS, { WebSocket } from 'uwebsockets.js';
-import { GameFactory } from './room.js';
-import { Player } from './player.js';
-import { CallbreakGame } from './game.js';
+import uWS, { WebSocket, HttpRequest, HttpResponse } from 'uwebsockets.js';
+import { GameFactory, Player, CallbreakGame, ServerMessage, ClientMessage } from 'game-logic';
 import { Room } from './room.js';
-import { ServerMessage, ClientMessage } from './message.js';
 
 interface UserData {
 	playerId: string | null;
@@ -41,7 +38,7 @@ export class ServerController {
 
 	constructor(port: number) {
 		const app = uWS.App({}).ws<UserData>('/*', {
-			upgrade: (res, req, context) => {
+			upgrade: (res: HttpResponse, req: HttpRequest, context) => {
 				const secWebSocketKey = req.getHeader('sec-websocket-key');
 				const secWebSocketProtocol = req.getHeader('sec-websocket-protocol');
 				const secWebSocketExtensions = req.getHeader('sec-websocket-extensions');
@@ -104,6 +101,8 @@ export class ServerController {
 				this.onMessage(player, room, message);
 			},
 
+
+
 			close: (ws: WebSocket<UserData>, code: number, message: ArrayBuffer) => {
 				const attachment = (ws as CustomWebSocket).attachment;
 				if (attachment) {
@@ -139,7 +138,7 @@ export class ServerController {
 		const player = new Player(playerId!, name!, 'US');
 		this.connectionMap.set(player.id, ws);
 
-		const gameFactory = (players: Map<string, Player>) => new CallbreakGame(players);
+		const gameFactory: GameFactory = (players) => new CallbreakGame(players);
 		const { room, isNew } = this.roomManager.getOrCreateRoom(roomId!, gameFactory);
 
 		if (isNew) {
@@ -156,7 +155,7 @@ export class ServerController {
 			const message: ServerMessage = { scope, type, payload };
 			const stringifiedMessage = JSON.stringify(message);
 
-			room.players.forEach((player) => {
+			room.players.forEach((player: Player) => {
 				const conn = this.connectionMap.get(player.id);
 				if (conn) {
 					conn.send(stringifiedMessage);

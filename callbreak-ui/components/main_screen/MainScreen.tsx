@@ -10,64 +10,13 @@ import { useRoom } from "@/contexts/RoomContext";
 import { usePathname } from "next/navigation";
 import { generateRandomCode } from "@/lib/utils";
 import { usePlayerName } from "@/hooks/usePlayerName";
-import RoomService from "@/lib/RoomService";
-
-const MAX_RETRIES = 5;
-
-function useRoomManager() {
-  const { roomState, dispatch } = useRoom();
-  const { setScene } = useGame();
-  const { addToast } = useToast();
-  const [retryCount, setRetryCount] = useState(0);
-
-  const connectToRoom = useCallback(
-    (id: string, name: string, roomId: string, noCreate: boolean = false) => {
-      dispatch({ type: "SET_ROOM", payload: { id, name, roomId } });
-      RoomService.connect(id, name, roomId, noCreate);
-    },
-    [dispatch]
-  );
-
-  useEffect(() => {
-    const handleOpen = () => {
-      window.history.pushState({}, "", roomState.roomId);
-      setScene("lobby");
-    };
-
-    const handleClose = ({ wasClean }: { wasClean: boolean }) => {
-      if (!wasClean && retryCount < MAX_RETRIES) {
-        const timeout = Math.pow(2, retryCount) * 1000;
-        setTimeout(() => {
-          setRetryCount(retryCount + 1);
-          RoomService.connect(roomState.id, roomState.name, roomState.roomId);
-        }, timeout);
-      }
-    };
-
-    const handleError = ({ message }: { message: string }) => {
-      addToast(message);
-      RoomService.disconnect();
-      dispatch({ type: "RESET" });
-    };
-
-    RoomService.on("open", handleOpen);
-    RoomService.on("close", handleClose);
-    RoomService.on("error", handleError);
-
-    return () => {
-      RoomService.off("open", handleOpen);
-      RoomService.off("close", handleClose);
-      RoomService.off("error", handleError);
-    };
-  }, [roomState, retryCount, setScene, addToast, dispatch]);
-
-  return { connectToRoom, roomState };
-}
 
 export function MainScreen() {
   const containerRef = useRef<HTMLDivElement>(null);
   const [playerName] = usePlayerName();
-  const { connectToRoom, roomState } = useRoomManager();
+  const { roomState, dispatch, roomService } = useRoom();
+  const { setScene } = useGame();
+  const { addToast } = useToast();
   const { status } = roomState;
 
   const [isPlayerPopupOpen, setPlayerPopupOpen] = useState(false);
@@ -77,32 +26,67 @@ export function MainScreen() {
   const pathname = usePathname();
 
   useEffect(() => {
-    const roomIdFromPath = pathname.substring(1);
-    if (roomIdFromPath && playerName && !roomState.manualDisconnect) {
-      connectToRoom(playerName, playerName, roomIdFromPath, true);
+    const pathParts = pathname.split("/").filter(Boolean);
+    if (pathParts.length === 2 && playerName && !roomState.manualDisconnect) {
+      const [roomType, roomId] = pathParts;
+      const isLocal = roomType === "local";
+      dispatch({ type: "SET_ROOM", payload: { id: playerName, name: playerName, roomId, isLocal } });
     }
-  }, [pathname, playerName, connectToRoom, roomState.manualDisconnect]);
+  }, [pathname, playerName, dispatch, roomState.manualDisconnect]);
 
   useEffect(() => {
-    const roomIdFromPath = pathname.substring(1);
-    if (!roomIdFromPath) {
-      RoomService.disconnect();
+    const pathParts = pathname.split("/").filter(Boolean);
+    if (pathParts.length < 2) {
+      roomService.disconnect();
     }
-  }, [pathname]);
+  }, [pathname, roomService]);
+
+  useEffect(() => {
+    const handleOpen = () => {
+      const roomType = roomState.isLocal ? "local" : "multi";
+      window.history.pushState({}, "", `/${roomType}/${roomState.roomId}`);
+      if (roomState.isLocal) {
+        setScene("game");
+      } else {
+        setScene("lobby");
+      }
+    };
+
+    const handleError = ({ message }: { message: string }) => {
+      addToast(message);
+      roomService.disconnect();
+      dispatch({ type: "RESET" });
+    };
+
+    roomService.on("open", handleOpen);
+    roomService.on("error", handleError);
+
+    return () => {
+      roomService.off("open", handleOpen);
+      roomService.off("error", handleError);
+    };
+  }, [roomState, setScene, addToast, dispatch, roomService]);
 
   const handleCreateRoom = () => {
     const newRoomId = "G-" + generateRandomCode();
-    connectToRoom(playerName, playerName, newRoomId);
+    dispatch({ type: "SET_ROOM", payload: { id: playerName, name: playerName, roomId: newRoomId, isLocal: false } });
+    roomService.connect(playerName, playerName, newRoomId);
   };
 
   const handleJoinRoom = () => {
     if (!roomCode) return;
-    connectToRoom(playerName, playerName, roomCode, true);
+    dispatch({ type: "SET_ROOM", payload: { id: playerName, name: playerName, roomId: roomCode, isLocal: false } });
+    roomService.connect(playerName, playerName, roomCode, true);
     setPlayerPopupOpen(true);
   };
 
+  const handleSinglePlayer = () => {
+    const newRoomId = "L-" + generateRandomCode();
+    dispatch({ type: "SET_ROOM", payload: { id: playerName, name: playerName, roomId: newRoomId, isLocal: true } });
+  };
+
   const handleCancel = () => {
-    RoomService.disconnect();
+    roomService.disconnect();
     setPlayerPopupOpen(false);
   };
 
@@ -126,6 +110,11 @@ export function MainScreen() {
         className="m-5 mr-2"
       />
       <div className="flex flex-col gap-4">
+        <Button
+            onClick={handleSinglePlayer}
+            title="Single Player"
+            disabled={status === "connecting"}
+        />
         <Button
           onClick={handleCreateRoom}
           title={
