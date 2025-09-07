@@ -98,12 +98,13 @@ function HandCard({
     () => ({
       position: "absolute",
       left: "50%",
-      bottom: `-${cardHeight * (allowed ? 0.2 : 0.4)}px`,
+      bottom: `-${cardHeight * (allowed ? 0.4 : 0.8)}px`,
       transform: `translateX(-50%)`,
       transformOrigin: "bottom center",
       zIndex: 100 + index,
       width: cardWidth,
       height: cardHeight,
+      transition: "bottom 0.2s",
     }),
     [cardHeight, allowed, index, cardWidth]
   );
@@ -114,11 +115,12 @@ function HandCard({
       initial={false}
       animate={{ marginLeft: xOffset, y: lifted ? -20 : 0 }}
       transition={{ type: "spring", stiffness: 560, damping: 28 }}
+      whileHover={allowed ? { y: -20 } : {}}
     >
       <Card
         ref={innerRef}
         card={card}
-        className={`${allowed ? "cursor-pointer" : ""}`}
+        className={`${allowed ? "cursor-pointer" : "cursor-not-allowed"}`}
         onClick={() => {
           if (allowed) {
             setLifted(true);

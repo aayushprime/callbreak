@@ -7,6 +7,7 @@ const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 export class Bot extends Player {
 	isBot: boolean;
 	cards: Card[] = [];
+	private hand: Card[] = [];
 
 	constructor(readonly room: Room, id: string, name: string, country: string) {
 		super(id, name, country);
@@ -14,34 +15,31 @@ export class Bot extends Player {
 	}
 
 	// Additional bot-specific methods can be added here
-	async onGameMessage(message: any): Promise<void> {
-		console.log(`Bot ${this.name} received message:`, message);
-		if (message.type === 'getBid') {
-			const bid = 2;
-			await delay(1200);
-			this.room.handleMessage(this.id, { scope: 'game', type: 'bid', payload: { bid } });
-		} else if (message.type === 'gameState') {
-			// snapshot for a single player provides playerCards as an array
-			this.cards = Array.isArray(message.payload?.playerCards) ? [...message.payload.playerCards] : [];
+	onGameMessage(message: { type: string; payload: any }) {
+		if (message.type === 'gameState') {
+			this.hand = message.payload.playerCards;
+		} else if (message.type === 'getBid') {
+			// Simple bot logic: bid 1 or 2
+			const bid = Math.floor(Math.random() * 2) + 1;
+			setTimeout(() => this.bid(bid), 500);
 		} else if (message.type === 'getCard') {
-			const playedCards = (message.payload?.playedCards || []) as Card[];
+			const { playedCards } = message.payload;
+			const validCards = computeValidCards(
+				this.hand,
+				playedCards.map((p: any) => p.card)
+			);
 
-			// compute valid cards according to Callbreak rules (follow suit, else trump rules)
-			const candidates = computeValidCards(this.cards, playedCards);
-			if (candidates.length === 0) {
-				// nothing to play (shouldn't happen) - fallback to first card
-				if (this.cards.length === 0) return;
-				await delay(500);
-				this.playCard(this.cards[0]);
-				return;
-			}
-
-			// pick a random valid card and play it after a short delay to simulate thinking
-			const idx = Math.floor(Math.random() * candidates.length);
-			const cardToPlay = candidates[idx];
-			await delay(800 + Math.floor(Math.random() * 800));
-			this.playCard(cardToPlay);
+			const cardToPlay = validCards[Math.floor(Math.random() * validCards.length)];
+			setTimeout(() => this.playCard(cardToPlay), 500);
 		}
+	}
+
+	private bid(bid: number) {
+		this.room.handleMessage(this.id, {
+			scope: 'game',
+			type: 'bid',
+			payload: { bid },
+		});
 	}
 
 	// computeValidCards moved to common.logic

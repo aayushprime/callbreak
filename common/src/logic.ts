@@ -51,24 +51,25 @@ export function beats(cardA: Card, cardB: Card, leadingSuit: Suit): boolean {
 }
 
 export function computeValidCards(hand: Card[], playedCards: Card[]): Card[] {
-  if (!hand || hand.length === 0) return [];
-  if (!playedCards || playedCards.length === 0) return [...hand];
+	if (!hand || hand.length === 0) return [];
+	if (!playedCards || playedCards.length === 0) return [...hand];
 
-  const leadingSuit = getSuit(playedCards[0]);
-  const hasLeading = hand.some((c) => getSuit(c) === leadingSuit);
-  if (hasLeading) return hand.filter((c) => getSuit(c) === leadingSuit);
+	const leadingSuit = getSuit(playedCards[0]);
+	const hasLeading = hand.some((c) => getSuit(c) === leadingSuit);
+	if (hasLeading) return hand.filter((c) => getSuit(c) === leadingSuit);
 
-  const hasTrump = hand.some((c) => getSuit(c) === TRUMP_SUIT);
-  if (hasTrump) {
-    const highestTrumpInTrick = playedCards
-      .filter((c) => getSuit(c) === TRUMP_SUIT)
-      .reduce((max, c) => Math.max(max, getRankValue(c)), 0);
-    const higherTrumps = hand.filter(
-      (c) => getSuit(c) === TRUMP_SUIT && getRankValue(c) > highestTrumpInTrick
-    );
-    if (higherTrumps.length > 0) return higherTrumps;
-    return hand.filter((c) => getSuit(c) === TRUMP_SUIT);
-  }
+	const hasTrump = hand.some((c) => getSuit(c) === TRUMP_SUIT);
+	if (hasTrump) {
+		const highestTrumpInTrick = playedCards
+			.filter((c) => getSuit(c) === TRUMP_SUIT)
+			.reduce((max, c) => Math.max(max, getRankValue(c)), 0);
+		const higherTrumps = hand.filter(
+			(c) => getSuit(c) === TRUMP_SUIT && getRankValue(c) > highestTrumpInTrick
+		);
+		if (higherTrumps.length > 0) return higherTrumps;
+		const trumpCards = hand.filter((c) => getSuit(c) === TRUMP_SUIT);
+		if (trumpCards.length > 0) return trumpCards;
+	}
 
-  return [...hand];
+	return [...hand];
 }

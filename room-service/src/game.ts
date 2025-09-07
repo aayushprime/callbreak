@@ -80,6 +80,8 @@ export class CallbreakGame extends Game {
 
 					this.state.submitBid(player.id, bid);
 					this.emit('broadcast', 'playerBid', { playerId: player.id, bid });
+					this.emit('broadcast', 'bidMade', {});
+					this.sendGameState();
 
 					// If bidding finished, playing starts, otherwise next bidder
 					this.notifyTurn();
@@ -93,7 +95,12 @@ export class CallbreakGame extends Game {
 
 					this.state.playCard(player.id, card);
 					this.emit('broadcast', 'playerCard', { playerId: player.id, card });
-					// this.emit('broadcast', 'gameState', this.snapshot());
+					this.sendGameState();
+
+					if (this.state.playedCards.length === 0) {
+						const winnerId = this.state.resolveTrick();
+						this.emit('broadcast', 'trickWon', { winnerId });
+					}
 
 					// If a trick resolved, state may have advanced the turn and/or round
 					if (this.isPhase('round_over')) {
@@ -140,14 +147,23 @@ export class CallbreakGame extends Game {
 	private snapshot(playerId: string) {
 		// Return a JSON-serializable snapshot. Convert Maps to plain objects.
 		const mapToObj = (m: Map<string, any>) => Object.fromEntries(m.entries());
+		const isPlayerTurn = this.currentPlayerId() === playerId;
+		const validCards =
+			this.state.phase === 'playing' && isPlayerTurn
+				? computeValidCards(
+						this.state.playerCards[playerId],
+						this.state.playedCards.map((p) => p.card)
+				  )
+				: [];
 		return {
 			players: this.state.players.map((p) => p.id),
 			you: playerId,
 			playerCards: this.state.playerCards[playerId],
 			turn: this.state.turn,
 			phase: this.state.phase,
-			bids: this.state.bids.get(playerId),
+			bids: mapToObj(this.state.bids),
 			playedCards: this.state.playedCards,
+			validCards,
 		};
 	}
 
@@ -220,7 +236,10 @@ export class CallbreakGame extends Game {
 	}
 
 	private pickRandomValidCard(playerId: string, hand: Card[]): Card {
-		const candidates = computeValidCards(hand, this.state.playedCards);
+		const candidates = computeValidCards(
+			hand,
+			this.state.playedCards.map((p) => p.card)
+		);
 		const idx = Math.floor(Math.random() * candidates.length);
 		return candidates[idx];
 	}

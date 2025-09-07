@@ -9,7 +9,7 @@ export interface RoundHistory {
   roundNumber: number;
   bids: Map<string, number>;
   tricksWon: Map<string, number>;
-  playedTricks: Card[][];
+  playedTricks: { player: string; card: Card }[][];
   biddingOrder: string[];
 }
 
@@ -29,8 +29,8 @@ export class CallbreakState {
 
   phase: "bidding" | "playing" | "round_over" | "game_over" = "bidding";
 
-  cardsHistory: Card[][] = [];
-  playedCards: Card[] = [];
+  cardsHistory: { player: string; card: Card }[][] = [];
+  playedCards: { player: string; card: Card }[] = [];
   trickLeadPlayerIndex: number;
 
   roundHistory: RoundHistory[] = [];
@@ -120,7 +120,7 @@ export class CallbreakState {
       throw new Error("Invalid card played. You must follow the game rules.");
     }
 
-    this.playedCards.push(card);
+    this.playedCards.push({ player: playerId, card: card });
     this.playerCards[playerId] = this.playerCards[playerId].filter(
       (c) => c !== card
     );
@@ -135,7 +135,7 @@ export class CallbreakState {
   private isValidPlay(playerId: string, cardToPlay: Card): boolean {
     const playerHand = this.playerCards[playerId];
     if (this.playedCards.length === 0) return true;
-    const leadingSuit = getSuit(this.playedCards[0]);
+    const leadingSuit = getSuit(this.playedCards[0].card);
     const playerHasLeadingSuit = playerHand.some(
       (c) => getSuit(c) === leadingSuit
     );
@@ -144,8 +144,8 @@ export class CallbreakState {
     if (playerHasTrump) {
       if (getSuit(cardToPlay) !== TRUMP_SUIT) return false;
       const highestTrumpInTrickValue = this.playedCards
-        .filter((c) => getSuit(c) === TRUMP_SUIT)
-        .reduce((max, card) => Math.max(max, getRankValue(card)), 0);
+        .filter((c) => getSuit(c.card) === TRUMP_SUIT)
+        .reduce((max, c) => Math.max(max, getRankValue(c.card)), 0);
       if (getRankValue(cardToPlay) > highestTrumpInTrickValue) return true;
       const canPlayHigherTrump = playerHand.some(
         (c) =>
@@ -157,15 +157,15 @@ export class CallbreakState {
     return true;
   }
 
-  private resolveTrick() {
-    let winningCard = this.playedCards[0];
+  resolveTrick() {
+    let winningPlay = this.playedCards[0];
     let winnerIndex = this.trickLeadPlayerIndex;
-    const leadingSuit = getSuit(this.playedCards[0]);
+    const leadingSuit = getSuit(this.playedCards[0].card);
 
     for (let i = 1; i < this.playedCards.length; i++) {
-      const currentCard = this.playedCards[i];
-      if (beats(currentCard, winningCard, leadingSuit)) {
-        winningCard = currentCard;
+      const currentPlay = this.playedCards[i];
+      if (beats(currentPlay.card, winningPlay.card, leadingSuit)) {
+        winningPlay = currentPlay;
         winnerIndex = (this.trickLeadPlayerIndex + i) % this.players.length;
       }
     }
@@ -188,6 +188,7 @@ export class CallbreakState {
         this.determineGameWinner();
       }
     }
+    return winnerId;
   }
 
   updatePoints() {

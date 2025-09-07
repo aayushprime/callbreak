@@ -30,7 +30,7 @@ export const Card = React.forwardRef<HTMLDivElement, CardProps>(
       <div
         ref={ref}
         {...props}
-        className={`w-full h-full rounded-md bg-white card-shadow border border-slate-200 flex flex-col items-center justify-center card-face select-none ${props.className}`}
+                className={`w-full h-full rounded-md bg-white card-shadow border border-slate-200 flex flex-col items-center justify-center card-face select-none ${props.className}`}
       >
         <div className="absolute top-2 left-2 text-left leading-none">
           <div

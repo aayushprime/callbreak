@@ -30,14 +30,7 @@ type ProfileProps = {
   pulseColor?: string;
 };
 
-export type ProfileHandle = {
-  playCard: (card: CardType, targetX: number, targetY: number) => void;
-  getBoundingClientRect: () => DOMRect | undefined;
-  setTurnTimer: (msLeft: number, totalMs?: number) => void;
-  stopTurnTimer: () => void;
-};
-
-export const Profile = forwardRef<ProfileHandle, ProfileProps>(
+export const Profile = forwardRef<HTMLDivElement, ProfileProps>(
   (
     {
       name = "",
@@ -62,12 +55,7 @@ export const Profile = forwardRef<ProfileHandle, ProfileProps>(
     const circleR = 45; // matches inner svg
     const circumference = Math.round(Math.PI * 2 * circleR);
     const altText = name ? `${name}'s avatar` : "Player avatar";
-    const innerRef = React.useRef<HTMLDivElement>(null);
     const texId = `tex-${(name || "player").replace(/\s+/g, "-")}`;
-
-    const [playedCards, setPlayedCards] = useState<
-      { card: CardType; targetX: number; targetY: number }[]
-    >([]);
 
     const [internalTotalTime, setInternalTotalTime] =
       useState<number>(totalTime);
@@ -101,34 +89,13 @@ export const Profile = forwardRef<ProfileHandle, ProfileProps>(
       // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [internalTotalTime]);
 
-    useImperativeHandle(ref, () => ({
-      playCard: (card: CardType, targetX: number, targetY: number) => {
-        setPlayedCards((prev) => [
-          ...prev,
-          { card: card, targetX: targetX, targetY: targetY },
-        ]);
-      },
-      getBoundingClientRect: () => innerRef.current?.getBoundingClientRect(),
-      setTurnTimer: (msLeft: number, totalMs?: number) => {
-        const t = (msLeft ?? 0) / 1000;
-        setInternalTotalTime(
-          totalMs ? totalMs / 1000 : Math.max(t, internalTotalTime)
-        );
-        setTimeLeft(t);
-      },
-      stopTurnTimer: () => {
-        setTimeLeft(0);
-        setInternalTotalTime(0);
-      },
-    }));
-
     return (
       <div
+        ref={ref}
         className={twMerge("relative flex flex-col items-center", className)}
         style={{ width: dim }}
       >
         <div
-          ref={innerRef}
           className={twMerge(
             "relative rounded-full overflow-hidden shadow-md transition-all duration-300",
             active ? "pulse-border-sky" : "static-border-sky"
@@ -234,12 +201,10 @@ export const Profile = forwardRef<ProfileHandle, ProfileProps>(
         {showStats && (
           <div className="absolute -bottom-14 left-1/2 -translate-x-1/2 flex gap-2">
             <div className="bg-white/10 backdrop-blur-sm text-white text-xs px-3 py-1 rounded-full border border-white/10 flex items-center gap-2">
-              <span className="text-[10px] opacity-80">Bid</span>
-              <strong className="text-sm">{bid ?? "-"}</strong>
-            </div>
-            <div className="bg-white/10 backdrop-blur-sm text-white text-xs px-3 py-1 rounded-full border border-white/10 flex items-center gap-2">
-              <span className="text-[10px] opacity-80">Pts</span>
-              <strong className="text-sm">{points}</strong>
+              <span className="text-[10px] opacity-80">B/P</span>
+              <strong className="text-sm">
+                {bid ?? "-"}/{points}
+              </strong>
             </div>
           </div>
         )}
@@ -258,23 +223,12 @@ export const Profile = forwardRef<ProfileHandle, ProfileProps>(
             )}
           </div>
         )}
-
-        {playedCards.map(({ card, targetX, targetY }, i) => (
-          <motion.div
-            layout
-            key={i}
-            initial={{ x: 0, y: 0, opacity: 0, scale: 0.5 }}
-            animate={{ x: targetX, y: targetY, opacity: 1, scale: 1 }}
-            transition={{ duration: 0.6, ease: "easeOut" }}
-            className="absolute w-32 h-44"
-          >
-            <Card card={card as CardType} />
-          </motion.div>
-        ))}
       </div>
     );
   }
 );
+
+Profile.displayName = "Profile";
 
 function getFlagEmoji(countryCode: string) {
   return countryCode

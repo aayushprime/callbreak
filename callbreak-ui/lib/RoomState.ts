@@ -13,4 +13,5 @@ export interface RoomState {
   hostId: string;
   status: "disconnected" | "connecting" | "connected" | "error";
   errorMessage: string | null;
+  manualDisconnect: boolean;
 }
