@@ -1,5 +1,5 @@
 {
-  "name": "game-logic",
+  "name": "callbreak-engine",
   "version": "1.0.0",
   "type": "module",
   "private": true,
@@ -16,6 +16,7 @@
     }
   },
   "scripts": {
+    "dev": "tsc -w",
     "build": "tsc -p ."
   },
   "devDependencies": {
@@ -23,6 +24,7 @@
     "@types/node": "^20"
   },
   "dependencies": {
-    "events": "^3.3.0"
+    "events": "^3.3.0",
+    "room-service": "workspace:*"
   }
 }

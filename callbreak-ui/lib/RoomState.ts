@@ -1,4 +1,4 @@
-import { Player as GamePlayer } from "game-logic";
+import { Player as GamePlayer } from "room-service";
 
 export type Player = GamePlayer & {
   picture: string;

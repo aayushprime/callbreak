@@ -1,6 +1,6 @@
 import { Card, createStandardDeck, drawCards } from "./cards.js";
 import { getSuit, getRankValue, beats, TRUMP_SUIT } from "./logic.js";
-import { Player } from "./player.js";
+import { Player } from "room-service";
 
 export interface RoundHistory {
   roundNumber: number;
@@ -19,22 +19,22 @@ export interface ClientRoundHistory {
 }
 
 export type GameStateSnapshot = {
-    players: string[];
-    you: string;
-    playerCards: Card[];
-    turn: number;
-    phase: "bidding" | "playing" | "round_over" | "game_over";
-    roundNumber: number;
-    bids: Record<string, number>;
-    playedCards: { player: string; card: Card }[];
-    tricksWon: Record<string, number>;
-    validCards: Card[];
-    roundHistory: ClientRoundHistory[];
-    points: Record<string, number>;
-    winner: string | null;
+  players: string[];
+  you: string;
+  playerCards: Card[];
+  turn: number;
+  phase: "bidding" | "playing" | "round_over" | "game_over";
+  roundNumber: number;
+  bids: Record<string, number>;
+  playedCards: { player: string; card: Card }[];
+  tricksWon: Record<string, number>;
+  validCards: Card[];
+  roundHistory: ClientRoundHistory[];
+  points: Record<string, number>;
+  winner: string | null;
 };
 
-const TOTAL_ROUNDS = 1;
+const TOTAL_ROUNDS = 5;
 
 export class CallbreakState {
   players: Player[];
@@ -280,7 +280,7 @@ export class CallbreakState {
       cardsHistory: this.cardsHistory,
       playedCards: this.playedCards,
       trickLeadPlayerIndex: this.trickLeadPlayerIndex,
-      roundHistory: this.roundHistory.map(rh => ({
+      roundHistory: this.roundHistory.map((rh) => ({
         ...rh,
         bids: Object.fromEntries(rh.bids),
         tricksWon: Object.fromEntries(rh.tricksWon),

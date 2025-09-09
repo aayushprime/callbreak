@@ -1,0 +1,10 @@
+{
+	"ui": "tui",
+	"tasks": {
+		"dev": {
+			"persistent": true,
+			"interactive": true,
+			"cache": false,
+		}
+	}
+}

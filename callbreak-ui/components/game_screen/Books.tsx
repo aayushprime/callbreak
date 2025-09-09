@@ -1,6 +1,7 @@
 "use client";
 
-import { ClientRoundHistory, Player } from "game-logic";
+import { ClientRoundHistory } from "callbreak-engine";
+import { Player } from "room-service";
 
 import { ReactNode } from "react";
 

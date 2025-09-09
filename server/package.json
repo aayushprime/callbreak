@@ -6,11 +6,11 @@
   "main": "es6/index.js",
   "scripts": {
     "build": "tsc",
-    "dev": "wrangler dev src/index.ts",
+    "dev": "tsc -w",
     "deploy": "wrangler deploy src/index.ts"
   },
   "dependencies": {
-    "game-logic": "workspace:*",
+    "callbreak-engine": "workspace:*",
     "room-service": "workspace:*",
     "uwebsockets.js": "uNetworking/uWebSockets.js#v20.43.0"
   },

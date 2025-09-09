@@ -3,7 +3,10 @@ import React, { createContext, useContext, useReducer, useEffect } from "react";
 import RoomService from "@/lib/RoomService";
 import LocalRoomService from "@/lib/LocalRoomService";
 import { Player, RoomState } from "@/lib/RoomState";
-import { RoomService as BaseRoomService, RoomConnectionStatus } from "game-logic";
+import {
+  RoomConnectionStatus,
+} from "@/lib/RoomService";
+import { EventEmitter } from "events";
 
 type RoomAction =
   | { type: "SET_ROOM"; payload: { id: string; name: string; roomId: string; isLocal?: boolean } }
@@ -59,7 +62,7 @@ function roomReducer(state: RoomState, action: RoomAction): RoomState {
 type RoomContextType = {
   roomState: RoomState;
   dispatch: React.Dispatch<RoomAction>;
-  roomService: BaseRoomService;
+  roomService: EventEmitter;
 };
 
 const RoomContext = createContext<RoomContextType | undefined>(undefined);

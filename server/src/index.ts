@@ -1,197 +1,240 @@
-import uWS, { WebSocket, HttpRequest, HttpResponse } from 'uwebsockets.js';
-import { GameFactory, Player, CallbreakGame, ServerMessage, ClientMessage } from 'game-logic';
-import { Room } from './room.js';
+import uWS, { WebSocket, HttpRequest, HttpResponse } from "uwebsockets.js";
+import {
+  CallbreakGame,
+  ServerMessage,
+  ClientMessage,
+  CallbreakBot,
+} from "callbreak-engine";
+import { CallbreakRoom } from "./room.js";
+import { Player, GameFactory, BotFactory, Room } from "room-service";
 
 interface UserData {
-	playerId: string | null;
-	roomId: string | null;
-	name: string | null;
-	noCreate: boolean;
+  playerId: string | null;
+  roomId: string | null;
+  name: string | null;
+  noCreate: boolean;
 }
 
 interface WebSocketAttachment {
-	player: Player;
-	room: Room;
+  player: Player;
+  room: Room;
 }
 
-type CustomWebSocket = WebSocket<UserData> & { attachment: WebSocketAttachment };
+type CustomWebSocket = WebSocket<UserData> & {
+  attachment: WebSocketAttachment;
+};
+
+const gameFactory: GameFactory = (players) => new CallbreakGame(players);
+const botFactory: BotFactory = (player) => new CallbreakBot(player);
 
 class RoomManager {
-	rooms = new Map<string, Room>();
+  rooms = new Map<string, Room>();
 
-	getOrCreateRoom(roomId: string, gameFactory: GameFactory): { room: Room; isNew: boolean } {
-		let isNew = false;
+  getOrCreateRoom(
+    roomId: string,
+    gameFactory: GameFactory,
+  ): { room: Room; isNew: boolean } {
+    let isNew = false;
 
-		if (!this.rooms.has(roomId)) {
-			const room = new Room(roomId, gameFactory, () => this.rooms.delete(roomId));
-			this.rooms.set(roomId, room);
-			isNew = true;
-		}
+    if (!this.rooms.has(roomId)) {
+      const room = new CallbreakRoom(roomId, gameFactory, botFactory, () =>
+        this.rooms.delete(roomId),
+      );
+      this.rooms.set(roomId, room);
+      isNew = true;
+    }
 
-		return { room: this.rooms.get(roomId)!, isNew };
-	}
+    return { room: this.rooms.get(roomId)!, isNew };
+  }
 }
 
 export class ServerController {
-	private roomManager = new RoomManager();
-	private connectionMap = new Map<string, WebSocket<UserData>>();
+  private roomManager = new RoomManager();
+  private connectionMap = new Map<string, WebSocket<UserData>>();
 
-	constructor(port: number) {
-		const app = uWS.App({}).ws<UserData>('/*', {
-			upgrade: (res: HttpResponse, req: HttpRequest, context) => {
-				const secWebSocketKey = req.getHeader('sec-websocket-key');
-				const secWebSocketProtocol = req.getHeader('sec-websocket-protocol');
-				const secWebSocketExtensions = req.getHeader('sec-websocket-extensions');
+  constructor(port: number) {
+    const app = uWS.App({}).ws<UserData>("/*", {
+      upgrade: (res: HttpResponse, req: HttpRequest, context) => {
+        const secWebSocketKey = req.getHeader("sec-websocket-key");
+        const secWebSocketProtocol = req.getHeader("sec-websocket-protocol");
+        const secWebSocketExtensions = req.getHeader(
+          "sec-websocket-extensions",
+        );
 
-				const params = new URLSearchParams(req.getQuery());
-				const playerId = params.get('id');
-				const roomId = params.get('roomId');
-				const name = params.get('name');
-				const noCreate = params.get('noCreate') === 'true';
+        const params = new URLSearchParams(req.getQuery());
+        const playerId = params.get("id");
+        const roomId = params.get("roomId");
+        const name = params.get("name");
+        const noCreate = params.get("noCreate") === "true";
 
-				res.upgrade({ playerId, roomId, name, noCreate }, secWebSocketKey, secWebSocketProtocol, secWebSocketExtensions, context);
-			},
+        res.upgrade(
+          { playerId, roomId, name, noCreate },
+          secWebSocketKey,
+          secWebSocketProtocol,
+          secWebSocketExtensions,
+          context,
+        );
+      },
 
-			/* `open` handler validates, sends a specific error message on failure, then closes. */
-			open: (ws: WebSocket<UserData>) => {
-				const { playerId, roomId, name, noCreate } = ws.getUserData();
+      /* `open` handler validates, sends a specific error message on failure, then closes. */
+      open: (ws: WebSocket<UserData>) => {
+        const { playerId, roomId, name, noCreate } = ws.getUserData();
 
-				// --- VALIDATION BLOCK ---
+        // --- VALIDATION BLOCK ---
 
-				// 1. Check for missing credentials.
-				if (!playerId || !roomId || !name) {
-					const reason = 'Missing credentials';
-					console.log(`Validation failed: ${reason}.`, { playerId, roomId, name });
-					// Send a structured error message first
-					ws.send(JSON.stringify({ type: 'error', message: reason }));
-					// Then close the connection
-					ws.end(4000, reason);
-					return;
-				}
+        // 1. Check for missing credentials.
+        if (!playerId || !roomId || !name) {
+          const reason = "Missing credentials";
+          console.log(`Validation failed: ${reason}.`, {
+            playerId,
+            roomId,
+            name,
+          });
+          // Send a structured error message first
+          ws.send(JSON.stringify({ type: "error", message: reason }));
+          // Then close the connection
+          ws.end(4000, reason);
+          return;
+        }
 
-				// 2. Check if player ID is already in use.
-				if (this.connectionMap.has(playerId)) {
-					const reason = 'Player ID already connected';
-					console.log(`Validation failed: ${reason}:`, playerId);
-					ws.send(JSON.stringify({ type: 'error', message: reason }));
-					ws.end(4001, reason);
-					return;
-				}
+        // 2. Check if player ID is already in use.
+        if (this.connectionMap.has(playerId)) {
+          const reason = "Player ID already connected";
+          console.log(`Validation failed: ${reason}:`, playerId);
+          ws.send(JSON.stringify({ type: "error", message: reason }));
+          ws.end(4001, reason);
+          return;
+        }
 
-				// 3. Check if joining a non-existent room is disallowed.
-				const room = this.roomManager.rooms.get(roomId);
-				if (!room && noCreate) {
-					const reason = 'Room not found';
-					console.log(`Validation failed: ${reason} and creation is disabled.`);
-					ws.send(JSON.stringify({ type: 'error', message: reason }));
-					ws.end(4002, reason);
-					return;
-				}
+        // 3. Check if joining a non-existent room is disallowed.
+        const room = this.roomManager.rooms.get(roomId);
+        if (!room && noCreate) {
+          const reason = "Room not found";
+          console.log(`Validation failed: ${reason} and creation is disabled.`);
+          ws.send(JSON.stringify({ type: "error", message: reason }));
+          ws.end(4002, reason);
+          return;
+        }
 
-				// --- END VALIDATION ---
+        // --- END VALIDATION ---
 
-				// If all checks pass, proceed with the connection setup.
-				ws.send(JSON.stringify({ type: 'open' }));
-				this.onConnection(ws);
-			},
+        // If all checks pass, proceed with the connection setup.
+        ws.send(JSON.stringify({ type: "open" }));
+        this.onConnection(ws);
+      },
 
-			message: (ws: WebSocket<UserData>, message: ArrayBuffer, isBinary: boolean) => {
-				// This will only be called for fully established connections, not for the error messages above.
-				const { player, room } = (ws as CustomWebSocket).attachment;
-				this.onMessage(player, room, message);
-			},
+      message: (
+        ws: WebSocket<UserData>,
+        message: ArrayBuffer,
+        isBinary: boolean,
+      ) => {
+        // This will only be called for fully established connections, not for the error messages above.
+        const { player, room } = (ws as CustomWebSocket).attachment;
+        this.onMessage(player, room, message);
+      },
 
+      close: (ws: WebSocket<UserData>, code: number, message: ArrayBuffer) => {
+        const attachment = (ws as CustomWebSocket).attachment;
+        if (attachment) {
+          const { player, room } = attachment;
+          this.onClose(player, room);
+        } else {
+          console.log(`Connection closed pre-attachment. Code: ${code}`);
+        }
+      },
+    });
+    app.listen("0.0.0.0", 8080, (socket) => {
+      if (socket) {
+        console.log(`Server started on 0.0.0.0 ${port}`);
+      } else {
+        console.log(`Failed to start server on port ${port}`);
+      }
+    });
+    app.listen("::", port, (socket) => {
+      if (socket) {
+        console.log(`Server started on :: ${port}`);
+      } else {
+        console.log(`Failed to start server on port ${port}`);
+      }
+    });
+  }
 
+  /**
+   * Handles a new, validated WebSocket connection.
+   */
+  private onConnection(ws: WebSocket<UserData>): void {
+    const { playerId, roomId, name } = ws.getUserData();
 
-			close: (ws: WebSocket<UserData>, code: number, message: ArrayBuffer) => {
-				const attachment = (ws as CustomWebSocket).attachment;
-				if (attachment) {
-					const { player, room } = attachment;
-					this.onClose(player, room);
-				} else {
-					console.log(`Connection closed pre-attachment. Code: ${code}`);
-				}
-			},
-		});
-		app.listen('0.0.0.0', 8080, (socket) => {
-			if (socket) {
-				console.log(`Server started on 0.0.0.0 ${port}`);
-			} else {
-				console.log(`Failed to start server on port ${port}`);
-			}
-		});
-		app.listen('::', port, (socket) => {
-			if (socket) {
-				console.log(`Server started on :: ${port}`);
-			} else {
-				console.log(`Failed to start server on port ${port}`);
-			}
-		});
-	}
+    const player = new Player(playerId!, name!, "US");
+    this.connectionMap.set(player.id, ws);
 
-	/**
-	 * Handles a new, validated WebSocket connection.
-	 */
-	private onConnection(ws: WebSocket<UserData>): void {
-		const { playerId, roomId, name } = ws.getUserData();
+    const { room, isNew } = this.roomManager.getOrCreateRoom(
+      roomId!,
+      gameFactory,
+    );
 
-		const player = new Player(playerId!, name!, 'US');
-		this.connectionMap.set(player.id, ws);
+    if (isNew) {
+      this.setupRoomListeners(room);
+    }
 
-		const gameFactory: GameFactory = (players) => new CallbreakGame(players);
-		const { room, isNew } = this.roomManager.getOrCreateRoom(roomId!, gameFactory);
+    (ws as CustomWebSocket).attachment = { player, room };
 
-		if (isNew) {
-			this.setupRoomListeners(room);
-		}
+    room.join(player);
+  }
 
-		(ws as CustomWebSocket).attachment = { player, room };
+  private setupRoomListeners(room: Room): void {
+    room.on(
+      "broadcast",
+      (scope: "room" | "game", type: string, payload: any) => {
+        const message: ServerMessage = { scope, type, payload };
+        const stringifiedMessage = JSON.stringify(message);
 
-		room.join(player);
-	}
+        room.players.forEach((player: Player) => {
+          const conn = this.connectionMap.get(player.id);
+          if (conn) {
+            conn.send(stringifiedMessage);
+          }
+        });
+      },
+    );
 
-	private setupRoomListeners(room: Room): void {
-		room.on('broadcast', (scope: 'room' | 'game', type: string, payload: any) => {
-			const message: ServerMessage = { scope, type, payload };
-			const stringifiedMessage = JSON.stringify(message);
+    room.on(
+      "send",
+      (
+        scope: "room" | "game",
+        playerId: string,
+        type: string,
+        payload: any,
+      ) => {
+        const message: ServerMessage = { scope, type, payload };
+        const stringifiedMessage = JSON.stringify(message);
 
-			room.players.forEach((player: Player) => {
-				const conn = this.connectionMap.get(player.id);
-				if (conn) {
-					conn.send(stringifiedMessage);
-				}
-			});
-		});
+        const conn = this.connectionMap.get(playerId);
+        if (conn) {
+          conn.send(stringifiedMessage);
+        }
+      },
+    );
 
-		room.on('send', (scope: 'room' | 'game', playerId: string, type: string, payload: any) => {
-			const message: ServerMessage = { scope, type, payload };
-			const stringifiedMessage = JSON.stringify(message);
+    room.on("close", (playerId: string, reason: string) => {
+      const conn = this.connectionMap.get(playerId);
+      if (conn) {
+        conn.send(JSON.stringify({ type: "error", message: reason }));
+        conn.end(4002, reason);
+      }
+    });
+  }
 
-			const conn = this.connectionMap.get(playerId);
-			if (conn) {
-				conn.send(stringifiedMessage);
-			}
-		});
+  private onMessage(player: Player, room: Room, data: ArrayBuffer): void {
+    const message: ClientMessage = JSON.parse(Buffer.from(data).toString());
+    room.handleMessage(player.id, message);
+  }
 
-		room.on('close', (playerId: string, reason: string) => {
-			const conn = this.connectionMap.get(playerId);
-			if (conn) {
-				conn.send(JSON.stringify({ type: 'error', message: reason }));
-				conn.end(4002, reason);
-			}
-		});
-	}
-
-	private onMessage(player: Player, room: Room, data: ArrayBuffer): void {
-		const message: ClientMessage = JSON.parse(Buffer.from(data).toString());
-		room.handleMessage(player.id, message);
-	}
-
-	private onClose(player: Player, room: Room): void {
-		console.log(`Player ${player.name} (${player.id}) disconnected.`);
-		this.connectionMap.delete(player.id);
-		room.leave(player.id);
-	}
+  private onClose(player: Player, room: Room): void {
+    console.log(`Player ${player.name} (${player.id}) disconnected.`);
+    this.connectionMap.delete(player.id);
+    room.leave(player.id);
+  }
 }
 
 new ServerController(8080);

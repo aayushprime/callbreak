@@ -6,7 +6,7 @@ import React, {
   useEffect,
 } from "react";
 import { twMerge } from "tailwind-merge";
-import { Card as CardType } from "game-logic";
+import { Card as CardType } from "callbreak-engine";
 import { Card } from "../ui/Card";
 import { motion } from "framer-motion";
 

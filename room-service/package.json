@@ -1,8 +1,8 @@
 {
-	"name": "room-service",
-	"version": "1.0.0",
-	"type": "module",
-	"private": true,
+  "name": "room-service",
+  "version": "1.0.0",
+  "type": "module",
+  "private": true,
   "main": "./es6/index.js",
   "types": "./es6/index.d.ts",
   "exports": {
@@ -15,21 +15,19 @@
       "default": "./es6/*.js"
     }
   },
-	"scripts": {
-		"dev": "wrangler dev",
-		"start": "wrangler dev",
-		"deploy": "wrangler deploy",
-		"build": "tsc",
-		"cf-typegen": "wrangler types"
-	},
-	"devDependencies": {
-		"@cloudflare/workers-types": "^4.20240512.0",
-		"@types/node": "^24.2.0",
-		"@types/ws": "^8.18.1",
-		"typescript": "^5.9.2",
-		"wrangler": "^3.57.2"
-	},
-	"dependencies": {
-		"game-logic": "workspace:*"
-	}
+  "scripts": {
+    "dev": "tsc -w",
+    "start": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "build": "tsc",
+    "cf-typegen": "wrangler types"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20240512.0",
+    "@types/node": "^24.2.0",
+    "@types/ws": "^8.18.1",
+    "typescript": "^5.9.2",
+    "wrangler": "^3.57.2"
+  },
+  "dependencies": {}
 }

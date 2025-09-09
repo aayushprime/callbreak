@@ -1,7 +1,7 @@
 "use client";
 import React, { useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Card as CardType } from "game-logic";
+import { Card as CardType } from "callbreak-engine";
 import { Card } from "../ui/Card";
 
 interface HandProps {
@@ -34,9 +34,9 @@ export function Hand({ hand, onPlay, validCards }: HandProps) {
   const spacing = React.useMemo(() => {
     return total > 1
       ? Math.max(
-          MIN_SPACING,
-          Math.min(DEFAULT_SPACING, (containerWidth - cardWidth) / (total - 1))
-        )
+        MIN_SPACING,
+        Math.min(DEFAULT_SPACING, (containerWidth - cardWidth) / (total - 1))
+      )
       : 0;
   }, [total, containerWidth, cardWidth]);
 

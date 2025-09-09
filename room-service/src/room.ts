@@ -1,9 +1,11 @@
 import { Player } from './player.js';
 import { ClientMessage } from './message.js';
 import { EventEmitter } from 'events';
-import { Game, Bot, Player as GamePlayer } from 'game-logic';
+import { Game } from './game.js';
+import { Bot } from './bot.js';
 
-export type GameFactory = (players: Map<string, GamePlayer>) => Game;
+export type GameFactory = (players: Map<string, Player>) => Game;
+export type BotFactory = (profile: Player) => Bot;
 
 export class Room extends EventEmitter {
 	public players: Map<string, Player> = new Map();
@@ -13,7 +15,12 @@ export class Room extends EventEmitter {
 	private isActive: boolean = false; // Is a game currently running?
 	private bots: Record<string, Bot> = {};
 
-	constructor(public readonly id: string, private readonly gameFactory: GameFactory, readonly onEmpty: () => void) {
+	constructor(
+		public readonly id: string,
+		private readonly gameFactory: GameFactory,
+		private readonly botFactory: BotFactory,
+		readonly onEmpty: () => void,
+	) {
 		super();
 	}
 
@@ -21,7 +28,7 @@ export class Room extends EventEmitter {
 		const player = this.players.get(playerId);
 		if (!player) return;
 		if (message.scope === 'game' && this.isActive && this.game) {
-			this.game.onMessage(player as GamePlayer, message);
+			this.game.onMessage(player as Player, message);
 		} else if (message.scope === 'room') {
 			this.handleLobbyMessage(player, message);
 		}
@@ -37,7 +44,7 @@ export class Room extends EventEmitter {
 				return;
 			}
 
-			const game = this.gameFactory(this.players as Map<string, GamePlayer>);
+			const game = this.gameFactory(this.players as Map<string, Player>);
 			const error = game.allowStart();
 
 			if (error) {
@@ -60,7 +67,7 @@ export class Room extends EventEmitter {
 	public join(player: Player): void {
 		if (this.isActive && this.game) {
 			if (this.players.has(player.id)) {
-				this.game.onReconnect(player as GamePlayer);
+				this.game.onReconnect(player as Player);
 			} else {
 				this.emit('close', player.id, 'A game is already in progress.');
 			}
@@ -84,7 +91,8 @@ export class Room extends EventEmitter {
 			// join 3 bots
 			while (this.players.size < 4) {
 				const botId = `bot-${this.players.size + 1}`;
-				const bot = new Bot(botId, `Bot ${this.players.size + 1}`, 'US');
+				const botPlayer = new Player(botId, `Bot ${this.players.size + 1}`, 'US');
+				const bot = this.botFactory(botPlayer);
 				this.bots[bot.id] = bot;
 				bot.on('action', (action) => this.handleMessage(bot.id, action));
 				this.join(bot.player);
@@ -97,13 +105,19 @@ export class Room extends EventEmitter {
 		if (!player) return;
 
 		if (this.isActive && this.game) {
-			this.game.onDisconnect(player as GamePlayer);
+			this.game.onDisconnect(player as Player);
 		}
 
 		this.players.delete(playerId);
 		this.emit('broadcast', 'room', 'playerLeft', { playerId });
 
 		if (this.players.size === 0) {
+			this.onEmpty();
+			return;
+		}
+
+		const allBots = Array.from(this.players.values()).every((p) => (p as any).isBot);
+		if (allBots) {
 			this.onEmpty();
 			return;
 		}

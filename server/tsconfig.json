@@ -1,18 +1,34 @@
 {
+  "compileOnSave": true,
   "compilerOptions": {
-    "target": "es2021",
-    "module": "es2022",
+    "target": "es2020",
+    "lib": [
+      "es2020"
+    ],
+    "types": [
+      "node"
+    ],
+    "module": "esnext",
     "moduleResolution": "node",
-    "lib": ["es2021"],
-    "outDir": "es6",
-    "rootDir": "src",
-    "strict": true,
     "esModuleInterop": true,
-    "skipLibCheck": true,
-    "forceConsistentCasingInFileNames": true,
-    "composite": true,
+    "noImplicitAny": true,
+    "removeComments": true,
+    "preserveConstEnums": true,
     "declaration": true,
-    "sourceMap": true
+    "outDir": "es6",
+    "strict": true,
+    "sourceMap": true,
+    "declarationMap": true,
+    "skipLibCheck": true,
+    "resolveJsonModule": true,
+    "strictNullChecks": true
   },
-  "include": ["src"]
+  "include": [
+    "src/**/*",
+    "environment.d.ts"
+  ],
+  "exclude": [
+    "node_modules",
+    "**/*.spec.ts"
+  ]
 }

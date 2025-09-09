@@ -4,7 +4,8 @@ import { Profile } from "@/components/game_screen/Profile";
 import { useGame } from "@/contexts/GameContext";
 import { useRoom } from "@/contexts/RoomContext";
 import { useToast } from "@/contexts/ToastContext";
-import { Card, GameStateSnapshot, Player } from "game-logic";
+import { Card, GameStateSnapshot } from "callbreak-engine";
+import { Player } from "room-service";
 import {
   useEffect,
   useState,
@@ -59,7 +60,7 @@ export function GameScreen() {
     setTrickWinner(null);
     setTrickCount((c) => c + 1);
     setIsAnimatingTrick(false);
-    roomService.send({ type: "requestGameState", scope: "game", payload: {} });
+    // roomService.send({ type: "requestGameState", scope: "game", payload: {} });
   }, [roomService]);
 
   useLayoutEffect(() => {
@@ -193,7 +194,13 @@ export function GameScreen() {
       roomService.off("trickWon", handleTrickWon);
       roomService.off("turnTimer", handleTurnTimer);
     };
-  }, [addToast, setScene, isAnimatingTrick, handleWinAnimationComplete, roomService]);
+  }, [
+    addToast,
+    setScene,
+    isAnimatingTrick,
+    handleWinAnimationComplete,
+    roomService,
+  ]);
 
   useEffect(() => {
     if (!turnTimer) return;
@@ -282,14 +289,16 @@ export function GameScreen() {
           showStats={true}
           active={turn === (yourPlayerIndex + 1) % 4}
           totalTime={
-            turnTimer?.playerId === players[(yourPlayerIndex + 1) % 4]?.id
+            turnTimer?.playerId === players[(yourPlayerIndex + 1) % 4]?.id &&
+            turnTimer
               ? turnTimer.msLeft === -1
                 ? -1
                 : 30
               : 0
           }
           turnTime={
-            turnTimer?.playerId === players[(yourPlayerIndex + 1) % 4]?.id
+            turnTimer?.playerId === players[(yourPlayerIndex + 1) % 4]?.id &&
+            turnTimer
               ? turnTimer.msLeft === -1
                 ? -1
                 : (turnTimer?.msLeft ?? 0) / 1000
@@ -310,14 +319,16 @@ export function GameScreen() {
           showStats={true}
           active={turn === (yourPlayerIndex + 2) % 4}
           totalTime={
-            turnTimer?.playerId === players[(yourPlayerIndex + 2) % 4]?.id
+            turnTimer?.playerId === players[(yourPlayerIndex + 2) % 4]?.id &&
+            turnTimer
               ? turnTimer.msLeft === -1
                 ? -1
                 : 30
               : 0
           }
           turnTime={
-            turnTimer?.playerId === players[(yourPlayerIndex + 2) % 4]?.id
+            turnTimer?.playerId === players[(yourPlayerIndex + 2) % 4]?.id &&
+            turnTimer
               ? turnTimer.msLeft === -1
                 ? -1
                 : (turnTimer?.msLeft ?? 0) / 1000
@@ -338,14 +349,16 @@ export function GameScreen() {
           showStats={true}
           active={turn === (yourPlayerIndex + 3) % 4}
           totalTime={
-            turnTimer?.playerId === players[(yourPlayerIndex + 3) % 4]?.id
+            turnTimer?.playerId === players[(yourPlayerIndex + 3) % 4]?.id &&
+            turnTimer
               ? turnTimer.msLeft === -1
                 ? -1
                 : 30
               : 0
           }
           turnTime={
-            turnTimer?.playerId === players[(yourPlayerIndex + 3) % 4]?.id
+            turnTimer?.playerId === players[(yourPlayerIndex + 3) % 4]?.id &&
+            turnTimer
               ? turnTimer.msLeft === -1
                 ? -1
                 : (turnTimer?.msLeft ?? 0) / 1000
@@ -434,16 +447,18 @@ export function GameScreen() {
         />
       )}
 
-      {turnTimer?.playerId === youPlayer.id && turnTimer.msLeft !== -1 && (
-        <div className="absolute bottom-0 left-0 w-full h-2 bg-slate-600">
-          <div
-            className="h-full bg-blue-500"
-            style={{
-              width: `${((turnTimer?.msLeft ?? 0) / 30000) * 100}%`,
-            }}
-          />
-        </div>
-      )}
+      {turnTimer?.playerId === youPlayer.id &&
+        turnTimer &&
+        turnTimer.msLeft !== -1 && (
+          <div className="absolute bottom-0 left-0 w-full h-2 bg-slate-600">
+            <div
+              className="h-full bg-blue-500"
+              style={{
+                width: `${((turnTimer?.msLeft ?? 0) / 30000) * 100}%`,
+              }}
+            />
+          </div>
+        )}
     </div>
   );
 }

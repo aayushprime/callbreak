@@ -15,17 +15,33 @@ importers:
         specifier: ^5.5.0
         version: 5.9.2
 
+  callbreak-engine:
+    dependencies:
+      events:
+        specifier: ^3.3.0
+        version: 3.3.0
+      room-service:
+        specifier: workspace:*
+        version: link:../room-service
+    devDependencies:
+      '@types/node':
+        specifier: ^20
+        version: 20.19.13
+      typescript:
+        specifier: ^5.5.0
+        version: 5.9.2
+
   callbreak-ui:
     dependencies:
+      callbreak-engine:
+        specifier: workspace:*
+        version: link:../callbreak-engine
       clsx:
         specifier: ^2.1.1
         version: 2.1.1
       framer-motion:
         specifier: ^12.23.12
         version: 12.23.12(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
-      game-logic:
-        specifier: workspace:*
-        version: link:../game-logic
       next:
         specifier: 15.4.6
         version: 15.4.6(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
@@ -35,6 +51,9 @@ importers:
       react-dom:
         specifier: 19.1.0
         version: 19.1.0(react@19.1.0)
+      room-service:
+        specifier: workspace:*
+        version: link:../room-service
       tailwind-merge:
         specifier: ^3.3.1
         version: 3.3.1
@@ -64,24 +83,7 @@ importers:
         specifier: ^5
         version: 5.9.2
 
-  game-logic:
-    dependencies:
-      events:
-        specifier: ^3.3.0
-        version: 3.3.0
-    devDependencies:
-      '@types/node':
-        specifier: ^20
-        version: 20.19.13
-      typescript:
-        specifier: ^5.5.0
-        version: 5.9.2
-
   room-service:
-    dependencies:
-      game-logic:
-        specifier: workspace:*
-        version: link:../game-logic
     devDependencies:
       '@cloudflare/workers-types':
         specifier: ^4.20240512.0
@@ -101,9 +103,9 @@ importers:
 
   server:
     dependencies:
-      game-logic:
+      callbreak-engine:
         specifier: workspace:*
-        version: link:../game-logic
+        version: link:../callbreak-engine
       room-service:
         specifier: workspace:*
         version: link:../room-service

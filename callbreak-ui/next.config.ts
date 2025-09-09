@@ -1,7 +1,7 @@
 import type { NextConfig } from "next";
 
 const nextConfig = {
-  transpilePackages: ["common", "game-logic"],
+  transpilePackages: ["common", "callbreak-engine"],
   images: {
     domains: ["www.gravatar.com"],
   },

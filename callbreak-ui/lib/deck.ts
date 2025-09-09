@@ -1,2 +1,2 @@
-export type { Card } from "game-logic";
-export { createStandardDeck } from "game-logic";
+export type { Card } from "callbreak-engine";
+export { createStandardDeck } from "callbreak-engine";

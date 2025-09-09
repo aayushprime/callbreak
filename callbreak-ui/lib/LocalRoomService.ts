@@ -1,198 +1,236 @@
+import { CallbreakGame, CallbreakBot } from "callbreak-engine";
 import {
-	Bot,
-	CallbreakGame,
-	Game,
-	GameFactory,
-	Player,
-	RoomService,
-	RoomConnectionStatus,
-	ClientMessage,
-} from 'game-logic';
+  Game,
+  GameFactory,
+  Player,
+  ClientMessage,
+  Bot,
+} from "room-service";
+import { EventEmitter } from "events";
 
-const LOCAL_STORAGE_PREFIX = 'callbreak-game-';
+export type RoomConnectionStatus =
+  | "disconnected"
+  | "connecting"
+  | "connected"
+  | "error";
 
-class LocalRoom extends RoomService {
-	public status: RoomConnectionStatus = 'disconnected';
-	public errorMessage: string | null = null;
-	public players: Map<string, Player> = new Map();
-	public hostId: string | undefined = undefined;
+const LOCAL_STORAGE_PREFIX = "callbreak-game-";
 
-	private game: CallbreakGame | null = null;
-	private isActive: boolean = false;
-	private bots: Record<string, Bot> = {};
-	private localPlayerId: string | null = null;
-	private roomId: string | null = null;
+class LocalRoom extends EventEmitter {
+  public status: RoomConnectionStatus = "disconnected";
+  public errorMessage: string | null = null;
+  public players: Map<string, Player> = new Map();
+  public hostId: string | undefined = undefined;
 
-	constructor() {
-		super();
-	}
+  private game: CallbreakGame | null = null;
+  private isActive: boolean = false;
+  private bots: Record<string, CallbreakBot> = {};
+  private localPlayerId: string | null = null;
+  private roomId: string | null = null;
 
-	connect(id: string, name: string, roomId: string, noCreate: boolean = false): void {
-		if (this.status === 'connected' || this.status === 'connecting') return;
+  constructor() {
+    super();
+  }
 
-		this.status = 'connecting';
-		this.emit('status', this.status);
-		this.localPlayerId = id;
-		this.roomId = roomId;
+  connect(
+    id: string,
+    name: string,
+    roomId: string,
+    noCreate: boolean = false,
+  ): void {
+    if (this.status === "connected" || this.status === "connecting") return;
 
-		setTimeout(() => {
-			this.hostId = id;
-			const player = new Player(id, name, 'US');
-			this.join(player);
+    this.status = "connecting";
+    this.emit("status", this.status);
+    this.localPlayerId = id;
+    this.roomId = roomId;
 
-			const savedGame = localStorage.getItem(LOCAL_STORAGE_PREFIX + this.roomId);
-			if (savedGame) {
-				try {
-					const savedState = JSON.parse(savedGame);
-					this.game = CallbreakGame.fromJSON(savedState, this.players);
-					this.setupGameListeners();
-					this.emit('gameStarted', {});
-					this.isActive = true;
-					// Resync all players
-					for (const p of this.players.values()) {
-						this.game.onReconnect(p);
-					}
-				} catch (e) {
-					console.error("Error loading saved game", e);
-					localStorage.removeItem(LOCAL_STORAGE_PREFIX + this.roomId);
-					this.handleMessage(id, { type: 'startGame', scope: 'room', payload: {} });
-				}
-			} else {
-				this.handleMessage(id, { type: 'startGame', scope: 'room', payload: {} });
-			}
+    setTimeout(() => {
+      this.hostId = id;
+      const player = new Player(id, name, "US");
+      this.join(player);
 
-			this.status = 'connected';
-			this.emit('status', this.status);
-			this.emit('open');
-		}, 100);
-	}
+      const savedGame = localStorage.getItem(
+        LOCAL_STORAGE_PREFIX + this.roomId,
+      );
+      if (savedGame) {
+        try {
+          const savedState = JSON.parse(savedGame);
+          this.game = CallbreakGame.fromJSON(savedState, this.players);
+          this.setupGameListeners();
+          this.emit("gameStarted", {});
+          this.isActive = true;
+          // Resync all players
+          for (const p of this.players.values()) {
+            this.game.onReconnect(p);
+          }
+        } catch (e) {
+          console.error("Error loading saved game", e);
+          localStorage.removeItem(LOCAL_STORAGE_PREFIX + this.roomId);
+          this.handleMessage(id, {
+            type: "startGame",
+            scope: "room",
+            payload: {},
+          });
+        }
+      } else {
+        this.handleMessage(id, {
+          type: "startGame",
+          scope: "room",
+          payload: {},
+        });
+      }
 
-	disconnect(): void {
-		if (this.roomId) {
-			localStorage.removeItem(LOCAL_STORAGE_PREFIX + this.roomId);
-		}
-		this.players.clear();
-		this.bots = {};
-		if (this.game) {
-			this.game.removeAllListeners();
-			this.game = null;
-		}
-		this.isActive = false;
-		this.status = 'disconnected';
-		this.emit('status', this.status);
-	}
+      this.status = "connected";
+      this.emit("status", this.status);
+      this.emit("open");
+    }, 100);
+  }
 
-	send(message: ClientMessage): void {
-		if (this.localPlayerId) {
-			this.handleMessage(this.localPlayerId, message);
-		}
-	}
+  disconnect(): void {
+    if (this.roomId) {
+      localStorage.removeItem(LOCAL_STORAGE_PREFIX + this.roomId);
+    }
+    this.players.clear();
+    this.bots = {};
+    if (this.game) {
+      this.game.removeAllListeners();
+      this.game = null;
+    }
+    this.isActive = false;
+    this.status = "disconnected";
+    this.emit("status", this.status);
+  }
 
-	private join(player: Player): void {
-		if (this.isActive && this.game) {
-			if (this.players.has(player.id)) {
-				this.game.onReconnect(player);
-			}
-			return;
-		}
+  send(message: ClientMessage): void {
+    if (this.localPlayerId) {
+      this.handleMessage(this.localPlayerId, message);
+    }
+  }
 
-		this.emit('playerJoined', player.toSerializable());
-		this.players.set(player.id, player);
+  private join(player: Player): void {
+    if (this.isActive && this.game) {
+      if (this.players.has(player.id)) {
+        this.game.onReconnect(player);
+      }
+      return;
+    }
 
-		const allPlayers = Array.from(this.players.values()).map((p) => p.toSerializable());
-		if (player.id === this.localPlayerId) {
-			this.emit('welcome', {
-				players: allPlayers,
-				hostId: this.hostId,
-			});
-		}
+    this.emit("playerJoined", player.toSerializable());
+    this.players.set(player.id, player);
 
-		if (Object.keys(this.bots).length === 0) {
-			while (this.players.size < 4) {
-				const botId = `bot-${this.players.size + 1}`;
-				const bot = new Bot(botId, `Bot ${this.players.size + 1}`, 'US');
-				this.bots[bot.id] = bot;
-				bot.on('action', (action) => this.handleMessage(bot.id, action as ClientMessage));
-				this.join(bot.player);
-			}
-		}
-	}
+    const allPlayers = Array.from(this.players.values()).map((p) =>
+      p.toSerializable(),
+    );
+    if (player.id === this.localPlayerId) {
+      this.emit("welcome", {
+        players: allPlayers,
+        hostId: this.hostId,
+      });
+    }
 
-	private handleMessage(playerId: string, message: ClientMessage): void {
-		const player = this.players.get(playerId);
-		if (!player) return;
+    if (Object.keys(this.bots).length === 0) {
+      while (this.players.size < 4) {
+        const botId = `bot-${this.players.size + 1}`;
+        const player = new Player(
+          botId,
+          `Bot ${this.players.size + 1}`,
+          "US",
+        );
+        const bot = new CallbreakBot(player);
+        this.bots[bot.id] = bot;
+        bot.on("action", (action) =>
+          this.handleMessage(bot.id, action as ClientMessage),
+        );
+        this.join(bot.player);
+      }
+    }
+  }
 
-		if (message.scope === 'game' && this.isActive && this.game) {
-			this.game.onMessage(player, message);
-		} else if (message.scope === 'room') {
-			this.handleLobbyMessage(player, message);
-		}
-	}
+  private handleMessage(playerId: string, message: ClientMessage): void {
+    const player = this.players.get(playerId);
+    if (!player) return;
 
-	private handleLobbyMessage(player: Player, message: ClientMessage): void {
-		if (message.type === 'startGame') {
-			if (player.id !== this.hostId) return;
-			if (this.isActive) return;
+    if (message.scope === "game" && this.isActive && this.game) {
+      this.game.onMessage(player, message);
+    } else if (message.scope === "room") {
+      this.handleLobbyMessage(player, message);
+    }
+  }
 
-			const gameFactory: GameFactory = (players) => new CallbreakGame(players, { timer: false });
-			const game = gameFactory(this.players);
-			const error = game.allowStart();
+  private handleLobbyMessage(player: Player, message: ClientMessage): void {
+    if (message.type === "startGame") {
+      if (player.id !== this.hostId) return;
+      if (this.isActive) return;
 
-			if (error) {
-				if (player.id === this.localPlayerId) {
-					this.emit('error', { message: error });
-				}
-				return;
-			}
-			this.game = game as CallbreakGame;
-			this.setupGameListeners();
-			this.emit('gameStarted', {});
-			this.isActive = true;
-			this.game.start();
-		}
-	}
+      const gameFactory: GameFactory = (players) =>
+        new CallbreakGame(players, { timer: false });
+      const game = gameFactory(this.players);
+      const error = game.allowStart();
 
-	private setupGameListeners(): void {
-		if (!this.game) return;
+      if (error) {
+        if (player.id === this.localPlayerId) {
+          this.emit("error", { message: error });
+        }
+        return;
+      }
+      this.game = game as CallbreakGame;
+      this.setupGameListeners();
+      this.emit("gameStarted", {});
+      this.isActive = true;
+      this.game.start();
+    }
+  }
 
-		const saveGameState = () => {
-			if (this.game && this.roomId) {
-				localStorage.setItem(LOCAL_STORAGE_PREFIX + this.roomId, JSON.stringify(this.game.toJSON()));
-			}
-		};
+  private setupGameListeners(): void {
+    if (!this.game) return;
 
-		this.game.on('broadcast', (type: string, payload: any) => {
-			this.emit(type, payload);
-			Object.values(this.bots).forEach((b) => b.onGameMessage({ type, payload }));
-			saveGameState();
-		});
+    const saveGameState = () => {
+      if (this.game && this.roomId) {
+        localStorage.setItem(
+          LOCAL_STORAGE_PREFIX + this.roomId,
+          JSON.stringify(this.game.toJSON()),
+        );
+      }
+    };
 
-		this.game.on('send', (playerId: string, type: string, payload: any) => {
-			const bot = this.bots[playerId];
-			if (bot) {
-				bot.onGameMessage({ type, payload });
-			} else if (playerId === this.localPlayerId) {
-				this.emit(type, payload);
-			}
-			saveGameState();
-		});
+    this.game.on("broadcast", (type: string, payload: any) => {
+      this.emit(type, payload);
+      Object.values(this.bots).forEach((b) =>
+        b.onGameMessage({ type, payload }),
+      );
+      saveGameState();
+    });
 
-		this.game.on('ended', (reason: string, { winnerId }: { winnerId?: string } = {}) => {
-			this.isActive = false;
-			if (this.roomId) {
-				localStorage.removeItem(LOCAL_STORAGE_PREFIX + this.roomId);
-			}
-			this.game?.removeAllListeners();
-			this.game = null;
-			this.emit('gameEnded', { reason, winnerId });
-		});
+    this.game.on("send", (playerId: string, type: string, payload: any) => {
+      const bot = this.bots[playerId];
+      if (bot) {
+        bot.onGameMessage({ type, payload });
+      } else if (playerId === this.localPlayerId) {
+        this.emit(type, payload);
+      }
+      saveGameState();
+    });
 
-		this.game.on('error', (player: Player, message: string) => {
-			if (player.id === this.localPlayerId) {
-				this.emit('error', { message });
-			}
-		});
-	}
+    this.game.on(
+      "ended",
+      (reason: string, { winnerId }: { winnerId?: string } = {}) => {
+        this.isActive = false;
+        if (this.roomId) {
+          localStorage.removeItem(LOCAL_STORAGE_PREFIX + this.roomId);
+        }
+        this.game?.removeAllListeners();
+        this.game = null;
+        this.emit("gameEnded", { reason, winnerId });
+      },
+    );
+
+    this.game.on("error", (player: Player, message: string) => {
+      if (player.id === this.localPlayerId) {
+        this.emit("error", { message });
+      }
+    });
+  }
 }
 
 const instance = new LocalRoom();
