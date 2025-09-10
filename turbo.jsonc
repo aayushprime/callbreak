@@ -1,10 +1,14 @@
 {
 	"ui": "tui",
 	"tasks": {
+		"build": {
+			"dependsOn": ["^build"],
+			"outputs": [".next/**", "!.next/cache/**", "es6/**"]
+		},
 		"dev": {
 			"persistent": true,
 			"interactive": true,
-			"cache": false,
+			"cache": false
 		}
 	}
 }

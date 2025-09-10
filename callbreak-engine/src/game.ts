@@ -45,9 +45,7 @@ export class CallbreakGame extends Game {
   }
 
   public start(): void {
-    const players = Array.from(this.players.values()).map((p) => ({
-      id: p.id,
-    }));
+    const players = Array.from(this.players.values());
     this.state = new CallbreakState(players);
     this.state.newRound();
 
