@@ -8,7 +8,7 @@ import {
 import { CallbreakRoom } from "./room.js";
 import { Player, GameFactory, BotFactory, Room } from "room-service";
 import { rooms } from "./registry.js";
-import { getRooms, createRoom, getMatchAccount, createRoomAndAddBots, startMatch, settleMatch, refundMatch, closeMatch } from "./api.js";
+import { getRooms, createRoom, getMatchAccount, createRoomAndAddBots, startMatch, settleMatch, closeMatch } from "./api.js";
 import { PublicKey, Connection, Keypair } from "@solana/web3.js";
 import {
   Program,
@@ -152,11 +152,11 @@ export class ServerController {
                 });
                 return;
               }
-              const roomId = await createRoom(program, roomFee, serverKeypair);
+              const { roomId, matchId } = await createRoom(program, roomFee, serverKeypair);
               res.cork(() => {
                 withCors(res)
                   .writeHeader("Content-Type", "application/json")
-                  .end(JSON.stringify({ roomId }));
+                  .end(JSON.stringify({ roomId, matchId }));
               });
             } catch (error: any) {
               res.writeStatus("500 Internal Server Error");
@@ -379,14 +379,6 @@ export class ServerController {
           await settleMatch(program, matchAccount.id, winnerIndex, serverKeypair);
           await closeMatch(program, matchAccount.id, serverKeypair);
         }
-      }
-    });
-
-    room.on("gameCancelledOnChain", async () => {
-      const matchAccount = await getMatchAccount(program, room.id);
-      if (matchAccount) {
-        await refundMatch(program, matchAccount.id, serverKeypair);
-        await closeMatch(program, matchAccount.id, serverKeypair);
       }
     });
   }

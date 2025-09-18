@@ -81,8 +81,6 @@ export async function joinMatch(
         .joinMatch(matchId)
         .accounts({
             player: playerKeypair.publicKey,
-            matchAccount: matchPublicKey,
-            systemProgram: web3.SystemProgram.programId,
         })
         .signers([playerKeypair])
         .rpc();
@@ -129,7 +127,6 @@ export async function startMatch(
         .startMatch(matchId)
         .accounts({
             host: hostKeypair.publicKey,
-            matchAccount: matchPublicKey,
         })
         .signers([hostKeypair])
         .rpc();
@@ -156,39 +153,12 @@ export async function settleMatch(
         .settleMatch(matchId, winnerIndex)
         .accounts({
             host: hostKeypair.publicKey,
-            matchAccount: matchPublicKey,
         })
         .signers([hostKeypair])
         .rpc();
         console.log("Match settled:", result);
     } catch (err) {
         console.log("ERROR settling match", err);
-        throw err;
-    }
-}
-
-export async function refundMatch(
-    program: Program<BettingContract>,
-    matchId: string,
-    hostKeypair: Keypair
-    ) {
-    const [matchPublicKey] = web3.PublicKey.findProgramAddressSync(
-        [Buffer.from("match"), Buffer.from(matchId)],
-        program.programId
-    );
-    
-    try {
-        const result = await program.methods
-        .refundMatch(matchId)
-        .accounts({
-            host: hostKeypair.publicKey,
-            matchAccount: matchPublicKey,
-        })
-        .signers([hostKeypair])
-        .rpc();
-        console.log("Match refunded:", result);
-    } catch (err) {
-        console.log("ERROR refunding match", err);
         throw err;
     }
 }
@@ -208,7 +178,6 @@ export async function closeMatch(
         .closeMatch(matchId)
         .accounts({
             host: hostKeypair.publicKey,
-            matchAccount: matchPublicKey,
         })
         .signers([hostKeypair])
         .rpc();

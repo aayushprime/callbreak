@@ -296,9 +296,9 @@ export function MainScreen() {
       if (!res.ok) {
         throw new Error(await res.text());
       }
-      const { roomId } = await res.json();
+      const { roomId, matchId } = await res.json();
 
-      pendingJoinRef.current = { roomId, roomFee, isJoin: false };
+      pendingJoinRef.current = { roomId, matchId, roomFee, isJoin: false };
       dispatch({
         type: "SET_ROOM",
         payload: {
