@@ -19,6 +19,8 @@ import { Trick } from "./Trick";
 import { SelfProfile } from "./SelfProfile";
 import { Button } from "../ui/Button";
 import { useRouter } from "next/navigation";
+import { Popup } from "../ui/Popup";
+import { BackButton } from "../ui/BackButton";
 
 export function GameScreen() {
   const { roomState, dispatch, roomService } = useRoom();
@@ -31,6 +33,7 @@ export function GameScreen() {
   const [isAnimatingTrick, setIsAnimatingTrick] = useState(false);
   const [showBidPopup, setShowBidPopup] = useState(false);
   const [showBooksPopup, setShowBooksPopup] = useState(false);
+  const [showQuitPopup, setShowQuitPopup] = useState(false);
   const [gameResult, setGameResult] = useState<{ winnerId: string } | null>(
     null
   );
@@ -413,9 +416,8 @@ export function GameScreen() {
         </div>
       )}
 
-      <div className="absolute top-4 left-4">
-        <p>Phase: {phase}</p>
-        <p>Turn: {players[turn]?.name}</p>
+      <div className="absolute top-4 left-4 z-60">
+        <BackButton onClick={() => setShowQuitPopup(true)} />
       </div>
 
       <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 text-center z-0">
@@ -424,7 +426,7 @@ export function GameScreen() {
         </h1>
       </div>
 
-      <div className="absolute top-4 right-4">
+      <div className="absolute top-4 right-4 z-60">
         <Button title="Books" onClick={() => setShowBooksPopup(true)} />
       </div>
 
@@ -445,6 +447,25 @@ export function GameScreen() {
             )
           }
         />
+      )}
+
+      {showQuitPopup && (
+        <Popup isOpen={showQuitPopup} title="Quit Game?">
+          <div className="flex flex-col gap-4">
+            <p>Are you sure you want to quit? Your progress will be lost.</p>
+            <div className="flex justify-end gap-4">
+              <Button
+                title="No, Stay"
+                onClick={() => setShowQuitPopup(false)}
+              />
+              <Button
+                title="Yes, Quit"
+                onClick={handleMainMenu}
+                className="bg-red-500 hover:bg-red-600"
+              />
+            </div>
+          </div>
+        </Popup>
       )}
 
       {turnTimer?.playerId === youPlayer.id &&
