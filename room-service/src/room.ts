@@ -21,7 +21,7 @@ export class Room extends EventEmitter {
 		private readonly botFactory: BotFactory,
 		public readonly roomFee: number,
 		readonly onEmpty: () => void,
-		public readonly isLocal: boolean,
+		public readonly isLocal: boolean
 	) {
 		super();
 	}
@@ -92,14 +92,17 @@ export class Room extends EventEmitter {
 		if (this.isLocal && !player.isBot) {
 			// join 3 bots
 			while (this.players.size < 4) {
-				const botId = `bot-${this.players.size + 1}`;
-				const botPlayer = new Player(botId, `Bot ${this.players.size + 1}`, 'US');
-				const bot = this.botFactory(botPlayer);
-				this.bots[bot.id] = bot;
-				bot.on('action', (action) => this.handleMessage(bot.id, action));
-				this.join(bot.player);
+				this.joinBot(`bot-${this.players.size + 1}`);
 			}
 		}
+	}
+
+	public joinBot(botId: string): void {
+		const botPlayer = new Player(botId, `Bot ${this.players.size + 1}`, 'US');
+		const bot = this.botFactory(botPlayer);
+		this.bots[bot.id] = bot;
+		bot.on('action', (action) => this.handleMessage(bot.id, action));
+		this.join(bot.player);
 	}
 
 	public leave(playerId: string): void {
@@ -130,6 +133,28 @@ export class Room extends EventEmitter {
 		}
 	}
 
+	public startGame(): void {
+		if (this.isActive) {
+			return;
+		}
+
+		const game = this.gameFactory(this.players as Map<string, Player>);
+		const error = game.allowStart();
+
+		if (error) {
+			this.emit('broadcast', 'room', 'error', { message: error });
+			return;
+		}
+		this.game = game;
+		this.setupGameListeners();
+
+		this.emit('broadcast', 'room', 'gameStarted', {});
+		this.emit('gameStartedOnChain');
+
+		this.isActive = true;
+		this.game.start();
+	}
+
 	private setupGameListeners(): void {
 		if (!this.game) return;
 
@@ -153,7 +178,7 @@ export class Room extends EventEmitter {
 			}
 		});
 
-		this.game.on('gameEnded', (reason: string) => {
+		this.game.on('gameEnded', (reason: string, data: any) => {
 			this.isActive = false;
 
 			this.game?.removeAllListeners();
@@ -161,9 +186,13 @@ export class Room extends EventEmitter {
 
 			emitBroadcast('room', 'gameEnded', { reason });
 			Object.values(bots).forEach((b) => b.onGameMessage({ type: 'gameEnded', payload: { reason } }));
+
+			if (reason === 'completed') {
+				this.emit('gameEndedOnChain', data.winnerId);
+			} else if (reason === 'player_disconnected_during_bidding') {
+				this.emit('gameCancelledOnChain');
+			}
 		});
-
-
 
 		this.game.on('error', (player: { id: string }, message: string) => {
 			emitSend('game', player.id, 'error', { message });

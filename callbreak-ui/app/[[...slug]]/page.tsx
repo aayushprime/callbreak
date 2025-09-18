@@ -14,12 +14,11 @@ import { WalletAdapterNetwork } from "@solana/wallet-adapter-base";
 import { WalletModalProvider } from "@solana/wallet-adapter-react-ui";
 import { clusterApiUrl } from "@solana/web3.js";
 
-
-
 function App() {
-  const network = WalletAdapterNetwork.Devnet;
-  const endpoint = useMemo(() => clusterApiUrl(network), [network]);
-  const wallets = useMemo(() => [], [network]);
+  // const network = WalletAdapterNetwork.Devnet;
+  // const endpoint = useMemo(() => clusterApiUrl(network), [network]);
+  const endpoint = "http://localhost:8899";
+  const wallets = useMemo(() => [], []);
 
   return (
     <ConnectionProvider endpoint={endpoint}>

@@ -5,7 +5,7 @@
  * IDL can be found at `target/idl/betting_contract.json`.
  */
 export type BettingContract = {
-  "address": "2khahbrpiyR493ecYb341kS5hajTq6GGVbzDDasBGThg",
+  "address": "12LxGYLQyP5m8HMzaQaC3dhcMLm9uvbzDgtwZ4Mjk5vX",
   "metadata": {
     "name": "bettingContract",
     "version": "0.1.0",

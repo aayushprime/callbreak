@@ -24,20 +24,33 @@ class RoomService extends EventEmitter {
     return RoomService.instance;
   }
 
-  connect(id: string, name: string, roomId: string, noCreate: boolean = false, roomFee: number = 0) {
+  connect(
+    id: string,
+    name: string,
+    roomId: string,
+    noCreate: boolean = false,
+    roomFee: number = 0,
+    publicKey?: string
+  ) {
     if (this.connection) return;
 
     this.status = "connecting";
     this.errorMessage = null;
     this.emit("status", this.status);
 
-    const queryParams = new URLSearchParams({
+    const params: Record<string, string> = {
       id,
       name,
       roomId,
       noCreate: noCreate.toString(),
       roomFee: roomFee.toString(),
-    }).toString();
+    };
+
+    if (publicKey) {
+      params.publicKey = publicKey;
+    }
+
+    const queryParams = new URLSearchParams(params).toString();
 
     this.connection = new WebSocket(
       `ws://${process.env.NEXT_PUBLIC_BACKEND_URL}/?${queryParams}`

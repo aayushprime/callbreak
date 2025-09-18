@@ -2,7 +2,7 @@
 
 use anchor_lang::{prelude::*, solana_program::system_instruction};
 
-declare_id!("2khahbrpiyR493ecYb341kS5hajTq6GGVbzDDasBGThg");
+declare_id!("12LxGYLQyP5m8HMzaQaC3dhcMLm9uvbzDgtwZ4Mjk5vX");
 
 pub const MAX_ID_LENGTH: usize = 32;
 pub const MAX_PLAYERS: usize = 4;
@@ -51,7 +51,7 @@ pub mod betting_contract {
         );
         require!(
             ctx.accounts.match_account.players.len()
-                < ctx.accounts.match_account.max_players as usize,
+                <= ctx.accounts.match_account.max_players as usize,
             ErrorCode::InvalidPlayers
         );
         require!(

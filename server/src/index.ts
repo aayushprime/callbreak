@@ -8,7 +8,7 @@ import {
 import { CallbreakRoom } from "./room.js";
 import { Player, GameFactory, BotFactory, Room } from "room-service";
 import { rooms } from "./registry.js";
-import { getRooms, createRoom, getMatchAccount } from "./api.js";
+import { getRooms, createRoom, getMatchAccount, createRoomAndAddBots, startMatch, settleMatch, refundMatch, closeMatch } from "./api.js";
 import { PublicKey, Connection, Keypair } from "@solana/web3.js";
 import {
   Program,
@@ -24,10 +24,19 @@ import keys from "./keys.json" with { type: "json" };
 // Derive the MatchAccount type from the IDL
 type MatchAccount = IdlAccounts<BettingContract>["matchAccount"];
 
+const generateRandomName = () => {
+  const adjectives = ["Red", "Green", "Blue", "Yellow", "Purple", "Orange"];
+  const nouns = ["Lion", "Tiger", "Bear", "Wolf", "Fox", "Eagle"];
+  const adjective = adjectives[Math.floor(Math.random() * adjectives.length)];
+  const noun = nouns[Math.floor(Math.random() * nouns.length)];
+  return `${adjective} ${noun}`;
+};
+
 interface UserData {
   playerId: string | null;
   roomId: string | null;
   name: string | null;
+  publicKey: string | null;
   noCreate: boolean;
   roomFee: number;
 }
@@ -48,8 +57,7 @@ const botFactory: BotFactory = (player) => new CallbreakBot(player);
 // In a real-world scenario, you'd load this from a .env file or secrets manager.
 const env = {
   SOLANA_RPC_URL: "http://127.0.0.1:8899",
-  SERVER_WALLET_PRIVATE_KEY:
-    process.env.SERVER_WALLET_PRIVATE_KEY || JSON.stringify(keys.host),
+  SERVER_WALLET_PRIVATE_KEY: process.env.SERVER_WALLET_PRIVATE_KEY || JSON.stringify(keys.host),
 };
 
 const connection = new Connection(env.SOLANA_RPC_URL, "confirmed");
@@ -106,27 +114,79 @@ export class ServerController {
         withCors(res).end();
       })
       .get("/api/rooms", (res, req) => {
-        console.log("GET ");
-        const rooms = getRooms();
-        withCors(res)
-          .writeHeader("Content-Type", "application/json")
-          .end(JSON.stringify(rooms));
+        res.onAborted(() => {
+          res.aborted = true;
+        });
+
+        getRooms(program)
+          .then((rooms) => {
+            if (!res.aborted) {
+              res.cork(() => {
+                withCors(res)
+                  .writeHeader("Content-Type", "application/json")
+                  .end(JSON.stringify(rooms));
+              });
+            }
+          })
+          .catch((err) => {
+            if (!res.aborted) {
+              res.cork(() => {
+                withCors(res)
+                  .writeStatus("500 Internal Server Error")
+                  .end("Failed to fetch rooms");
+              });
+            }
+          });
       })
       .post("/api/rooms", (res, req) => {
         res.onData(async (ab, isLast) => {
           if (isLast) {
             try {
               const body = JSON.parse(Buffer.from(ab).toString());
-              const { roomFee, host } = body;
-              if (!roomFee || !host) {
-                res.writeStatus("400 Bad Request");
-                withCors(res).end("Missing roomFee or host");
+              console.log("POST ", body);
+              const { roomFee } = body;
+              if (!roomFee) {
+                res.cork(() => {
+                  res.writeStatus("400 Bad Request");
+                  withCors(res).end("Missing roomFee");
+                });
                 return;
               }
-              const roomId = await createRoom(program, roomFee, host);
-              withCors(res)
-                .writeHeader("Content-Type", "application/json")
-                .end(JSON.stringify({ roomId }));
+              const roomId = await createRoom(program, roomFee, serverKeypair);
+              res.cork(() => {
+                withCors(res)
+                  .writeHeader("Content-Type", "application/json")
+                  .end(JSON.stringify({ roomId }));
+              });
+            } catch (error: any) {
+              res.writeStatus("500 Internal Server Error");
+              withCors(res).end(error.message);
+            }
+          }
+        });
+        res.onAborted(() => {
+          console.log("Request aborted");
+        });
+      })
+      .post("/api/join-online", (res, req) => {
+        res.onData(async (ab, isLast) => {
+          if (isLast) {
+            try {
+              const body = JSON.parse(Buffer.from(ab).toString());
+              const { roomFee } = body;
+              if (!roomFee) {
+                res.cork(() => {
+                  res.writeStatus("400 Bad Request");
+                  withCors(res).end("Missing roomFee");
+                });
+                return;
+              }
+              const {roomId, matchId} = await createRoomAndAddBots(program, roomFee, serverKeypair);
+              res.cork(() => {
+                withCors(res)
+                  .writeHeader("Content-Type", "application/json")
+                  .end(JSON.stringify({ roomId, matchId }));
+              });
             } catch (error: any) {
               res.writeStatus("500 Internal Server Error");
               withCors(res).end(error.message);
@@ -149,11 +209,12 @@ export class ServerController {
           const playerId = params.get("id");
           const roomId = params.get("roomId");
           const name = params.get("name");
+          const publicKey = params.get("publicKey");
           const noCreate = params.get("noCreate") === "true";
           const roomFee = Number(params.get("roomFee") || "0");
 
           res.upgrade(
-            { playerId, roomId, name, noCreate, roomFee },
+            { playerId, roomId, name, publicKey, noCreate, roomFee },
             secWebSocketKey,
             secWebSocketProtocol,
             secWebSocketExtensions,
@@ -162,8 +223,9 @@ export class ServerController {
         },
 
         open: async (ws: WebSocket<UserData>) => {
-          const { playerId, roomId, name, noCreate } = ws.getUserData();
-          if (!playerId || !roomId || !name) {
+          const { playerId, roomId, name, publicKey, noCreate, roomFee } =
+            ws.getUserData();
+          if (!playerId || !roomId || !name || !publicKey) {
             const reason = "Missing credentials";
             ws.send(JSON.stringify({ type: "error", message: reason }));
             ws.end(4000, reason);
@@ -175,13 +237,12 @@ export class ServerController {
             ws.end(4001, reason);
             return;
           }
-          const room = rooms.get(roomId);
-          if (!room && noCreate) {
-            const reason = "Room not found";
-            ws.send(JSON.stringify({ type: "error", message: reason }));
-            ws.end(4002, reason);
-            return;
-          }
+          
+          const { room, isNew } = this.roomManager.getOrCreateRoom(
+            roomId!,
+            gameFactory,
+            roomFee
+          );
 
           if (!roomId.startsWith("L-")) {
             const matchAccount = (await getMatchAccount(
@@ -197,16 +258,28 @@ export class ServerController {
             const playerPubkeys = matchAccount.players.map((p: PublicKey) =>
               p.toBase58()
             );
-            if (!playerPubkeys.includes(playerId)) {
+            if (!playerPubkeys.includes(publicKey)) {
               const reason = "You are not a player in this on-chain match";
               ws.send(JSON.stringify({ type: "error", message: reason }));
               ws.end(4005, reason);
               return;
             }
+
+            if (isNew) {
+              this.setupRoomListeners(room);
+              const botKeypairs = Object.values(keys.bots).map((bot) => Keypair.fromSecretKey(new Uint8Array(bot)));
+              const botPubkeys = botKeypairs.map(k => k.publicKey.toBase58());
+              
+              const onChainBots = matchAccount.players.filter((p: PublicKey) => botPubkeys.includes(p.toBase58()));
+
+              onChainBots.forEach((botKey: PublicKey, i: number) => {
+                room.joinBot(botKey.toBase58());
+              });
+            }
           }
 
           ws.send(JSON.stringify({ type: "open" }));
-          this.onConnection(ws);
+          this.onConnection(ws, room);
         },
 
         message: (
@@ -239,20 +312,18 @@ export class ServerController {
     });
   }
 
-  private onConnection(ws: WebSocket<UserData>): void {
-    const { playerId, roomId, name, roomFee } = ws.getUserData();
-    const player = new Player(playerId!, name!, "US");
+  private onConnection(ws: WebSocket<UserData>, room: Room): void {
+    const { playerId } = ws.getUserData();
+    const name = generateRandomName();
+    const player = new Player(playerId!, name, "US");
     this.connectionMap.set(player.id, ws);
-    const { room, isNew } = this.roomManager.getOrCreateRoom(
-      roomId!,
-      gameFactory,
-      roomFee
-    );
-    if (isNew) {
-      this.setupRoomListeners(room);
-    }
+    
     (ws as CustomWebSocket).attachment = { player, room };
     room.join(player);
+
+    if (room.players.size === 4) {
+      room.startGame();
+    }
   }
 
   private setupRoomListeners(room: Room): void {
@@ -290,6 +361,32 @@ export class ServerController {
       if (conn) {
         conn.send(JSON.stringify({ type: "error", message: reason }));
         conn.end(4002, reason);
+      }
+    });
+
+    room.on("gameStartedOnChain", async () => {
+      const matchAccount = await getMatchAccount(program, room.id);
+      if (matchAccount) {
+        await startMatch(program, matchAccount.id, serverKeypair);
+      }
+    });
+
+    room.on("gameEndedOnChain", async (winnerId: string) => {
+      const matchAccount = await getMatchAccount(program, room.id);
+      if (matchAccount) {
+        const winnerIndex = matchAccount.players.findIndex((p: PublicKey) => p.toBase58() === winnerId);
+        if (winnerIndex !== -1) {
+          await settleMatch(program, matchAccount.id, winnerIndex, serverKeypair);
+          await closeMatch(program, matchAccount.id, serverKeypair);
+        }
+      }
+    });
+
+    room.on("gameCancelledOnChain", async () => {
+      const matchAccount = await getMatchAccount(program, room.id);
+      if (matchAccount) {
+        await refundMatch(program, matchAccount.id, serverKeypair);
+        await closeMatch(program, matchAccount.id, serverKeypair);
       }
     });
   }

@@ -16,7 +16,7 @@ export const Popup: React.FC<PopupProps> = ({ isOpen, title, children }) => {
     <div className="fixed inset-0 z-50 flex items-center justify-center backdrop-blur-sm">
       <div
         className={clsx(
-          "bg-green-800 rounded-2xl shadow-2xl p-6 w-96 flex flex-col gap-4 transform transition-all duration-300 border border-green-600",
+          "bg-green-800 rounded-2xl shadow-2xl p-6 w-1/2 flex flex-col gap-4 transform transition-all duration-300 border border-green-600",
           {
             "animate-slide-in": isOpen && !isClosing,
             "animate-slide-out": isClosing,

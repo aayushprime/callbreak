@@ -6,7 +6,7 @@ resolution = true
 skip-lint = false
 
 [programs.localnet]
-betting_contract = "2khahbrpiyR493ecYb341kS5hajTq6GGVbzDDasBGThg"
+betting_contract = "12LxGYLQyP5m8HMzaQaC3dhcMLm9uvbzDgtwZ4Mjk5vX"
 
 [registry]
 url = "https://api.apr.dev"

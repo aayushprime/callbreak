@@ -1,4 +1,5 @@
 "use client";
+import { useGame } from "./GameContext";
 import React, { createContext, useContext, useReducer, useEffect } from "react";
 import RoomService from "@/lib/RoomService";
 import LocalRoomService from "@/lib/LocalRoomService";
@@ -70,6 +71,7 @@ const RoomContext = createContext<RoomContextType | undefined>(undefined);
 export function RoomProvider({ children }: { children: React.ReactNode }) {
   const [roomState, dispatch] = useReducer(roomReducer, initialState);
   const roomService = roomState.isLocal ? LocalRoomService : RoomService;
+  const { setScene } = useGame();
 
   useEffect(() => {
     if (roomState.status === 'connecting') {
@@ -105,12 +107,17 @@ export function RoomProvider({ children }: { children: React.ReactNode }) {
       dispatch({ type: "SET_HOST", payload: newHostId });
     };
 
+    const handleGameStarted = () => {
+      setScene("game");
+    };
+
     service.on("status", handleStatusChange);
     service.on("error", handleError);
     service.on("welcome", handleWelcome);
     service.on("playerJoined", handlePlayerJoined);
     service.on("playerLeft", handlePlayerLeft);
     service.on("hostChanged", handleHostChanged);
+    service.on("gameStarted", handleGameStarted);
 
     return () => {
       service.off("status", handleStatusChange);
@@ -119,8 +126,9 @@ export function RoomProvider({ children }: { children: React.ReactNode }) {
       service.off("playerJoined", handlePlayerJoined);
       service.off("playerLeft", handlePlayerLeft);
       service.off("hostChanged", handleHostChanged);
+      service.off("gameStarted", handleGameStarted);
     };
-  }, [roomState.isLocal]);
+  }, [roomState.isLocal, setScene]);
 
   return (
     <RoomContext.Provider value={{ roomState, dispatch, roomService }}>

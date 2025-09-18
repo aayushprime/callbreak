@@ -9,6 +9,7 @@ import { usePathname } from "next/navigation";
 import { generateRandomCode } from "@/lib/utils";
 import { usePlayerName } from "@/hooks/usePlayerName";
 import { MultiplayerPopup } from "@/components/ui/MultiplayerPopup";
+import { WaitingPopup } from "@/components/ui/WaitingPopup";
 import { useConnection, useWallet } from "@solana/wallet-adapter-react";
 import { useWalletModal } from "@solana/wallet-adapter-react-ui";
 import {
@@ -96,12 +97,22 @@ export function MainScreen() {
   const { setVisible } = useWalletModal();
 
   const [isMultiplayerPopupOpen, setMultiplayerPopupOpen] = useState(false);
-  const [availableRooms, setAvailableRooms] = useState([]);
+  const [availableRooms, setAvailableRooms] = useState<
+    {
+      roomCode: string;
+      matchId: string;
+      roomFee: number;
+      playerCount: number;
+    }[]
+  >([]);
+  const [isJoining, setIsJoining] = useState(false);
+  const [joiningMessage, setJoiningMessage] = useState("");
 
   const pathname = usePathname();
 
   const pendingJoinRef = useRef<{
     roomId: string;
+    matchId: string;
     roomFee: number;
     isJoin: boolean;
   } | null>(null);
@@ -117,7 +128,11 @@ export function MainScreen() {
     return provider;
   };
 
-  const joinMatch = async (matchId: string, roomFee: number) => {
+  const joinMatch = async (
+    roomId: string,
+    matchId: string,
+    roomFee: number
+  ) => {
     if (!publicKey) {
       addToast("Please connect your wallet first.", { color: "red" });
       return false;
@@ -126,10 +141,7 @@ export function MainScreen() {
       const provider = getProvider();
       const program = new Program(idl as BettingContract, provider);
 
-      const [matchAccount] = await PublicKey.findProgramAddress(
-        [Buffer.from("match"), Buffer.from(matchId)],
-        program.programId
-      );
+      const matchAccount = new PublicKey(roomId);
 
       await program.methods
         .joinMatch(matchId)
@@ -187,6 +199,7 @@ export function MainScreen() {
       const [roomType, roomId] = pathParts;
       if (roomType === "multi") {
         getMatchAccount(roomId).then((matchAccount) => {
+          console.log("Match account", matchAccount);
           if (
             matchAccount &&
             matchAccount.players
@@ -233,25 +246,7 @@ export function MainScreen() {
     const handleOpen = async () => {
       const roomType = roomState.isLocal ? "local" : "multi";
       window.history.pushState({}, "", `/${roomType}/${roomState.roomId}`);
-      if (roomState.isLocal) {
-        setScene("game");
-      } else {
-        if (pendingJoinRef.current) {
-          const { roomId, roomFee } = pendingJoinRef.current;
-          const success = await joinMatch(roomId, roomFee);
-
-          if (success) {
-            setScene("lobby");
-          } else {
-            addToast("Failed to join match.", { color: "red" });
-            roomService.disconnect();
-            dispatch({ type: "RESET" });
-          }
-          pendingJoinRef.current = null;
-        } else {
-          setScene("lobby");
-        }
-      }
+      setScene("game");
     };
 
     const handleError = ({ message }: { message: string }) => {
@@ -272,7 +267,7 @@ export function MainScreen() {
   const getMatchAccount = async (matchId: string) => {
     try {
       const provider = getProvider();
-      const program = new Program(idl as any, provider);
+      const program = new Program(idl as BettingContract, provider);
       const matchPda = new PublicKey(matchId);
       const matchAccount = await (program.account as any).matchAccount.fetch(
         matchPda
@@ -320,9 +315,59 @@ export function MainScreen() {
     }
   };
 
-  const handleJoinRoom = (roomCode: string, roomFee: number) => {
+  const handleJoinRoom = async (
+    roomCode: string,
+    matchId: string,
+    roomFee: number
+  ) => {
     if (!roomCode) return;
-    pendingJoinRef.current = { roomId: roomCode, roomFee, isJoin: true };
+
+    setMultiplayerPopupOpen(false);
+    setIsJoining(true);
+    setJoiningMessage("Checking if you are already in the match...");
+
+    const matchAccountData = await getMatchAccount(roomCode);
+    if (
+      matchAccountData &&
+      publicKey &&
+      matchAccountData.players
+        .map((p: PublicKey) => p.toBase58())
+        .includes(publicKey.toBase58())
+    ) {
+      setJoiningMessage("You are already in the match. Joining...");
+      pendingJoinRef.current = {
+        roomId: roomCode,
+        matchId,
+        roomFee,
+        isJoin: false, // Don't re-join if already a player
+      };
+      dispatch({
+        type: "SET_ROOM",
+        payload: {
+          id: playerName,
+          name: playerName,
+          roomId: roomCode,
+          isLocal: false,
+        },
+      });
+      roomService.connect(
+        playerName,
+        playerName,
+        roomCode,
+        true,
+        roomFee,
+        publicKey?.toBase58()
+      );
+      return;
+    }
+
+    setJoiningMessage("Connecting to room...");
+    pendingJoinRef.current = {
+      roomId: roomCode,
+      matchId,
+      roomFee,
+      isJoin: true,
+    };
     dispatch({
       type: "SET_ROOM",
       payload: {
@@ -332,9 +377,17 @@ export function MainScreen() {
         isLocal: false,
       },
     });
-    roomService.connect(playerName, playerName, roomCode, true);
-    setMultiplayerPopupOpen(false);
+    roomService.connect(
+      playerName,
+      playerName,
+      roomCode,
+      true,
+      roomFee,
+      publicKey?.toBase58()
+    );
   };
+
+  const [isJoiningOnline, setIsJoiningOnline] = useState(false);
 
   const handleSinglePlayer = () => {
     const newRoomId = "L-" + generateRandomCode();
@@ -349,17 +402,55 @@ export function MainScreen() {
     });
   };
 
-  const handleMultiplayer = () => {
-    if (connected) {
-      setMultiplayerPopupOpen(true);
-    } else {
+  const handleOnlineJoin = async () => {
+    if (!connected) {
       setVisible(true);
+      return;
     }
-  };
+    setIsJoiningOnline(true);
+    try {
+      const roomFee = 1; // Hardcoded room fee
+      const res = await fetch(
+        `http://${process.env.NEXT_PUBLIC_BACKEND_URL}/api/join-online`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ roomFee, host: publicKey?.toBase58() }),
+        }
+      );
+      if (!res.ok) {
+        throw new Error(await res.text());
+      }
+      const { roomId, matchId } = await res.json();
+      
+      const success = await joinMatch(roomId, matchId, roomFee);
 
-  const handleCancel = () => {
-    roomService.disconnect();
-    setMultiplayerPopupOpen(false);
+      if (success) {
+        dispatch({
+          type: "SET_ROOM",
+          payload: {
+            id: playerName,
+            name: playerName,
+            roomId: roomId,
+            isLocal: false,
+          },
+        });
+        roomService.connect(
+          playerName,
+          playerName,
+          roomId,
+          true,
+          roomFee,
+          publicKey?.toBase58()
+        );
+      }
+    } catch (error: any) {
+      addToast(`Failed to join online game: ${error.message}`, {
+        color: "red",
+      });
+    } finally {
+      setIsJoiningOnline(false);
+    }
   };
 
   return (
@@ -385,19 +476,12 @@ export function MainScreen() {
           disabled={status === "connecting"}
         />
         <Button
-          onClick={handleMultiplayer}
-          title="Multiplayer"
-          disabled={status === "connecting"}
+          onClick={handleOnlineJoin}
+          title="Online"
+          disabled={status === "connecting" || isJoiningOnline}
         />
       </div>
-      <MultiplayerPopup
-        isOpen={isMultiplayerPopupOpen}
-        onClose={handleCancel}
-        onCreateRoom={handleCreateRoom}
-        onJoinRoom={handleJoinRoom}
-        status={status}
-        availableRooms={availableRooms}
-      />
+      <WaitingPopup isOpen={isJoining} message={joiningMessage} />
     </div>
   );
 }

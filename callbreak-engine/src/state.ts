@@ -34,7 +34,7 @@ export type GameStateSnapshot = {
   winner: string | null;
 };
 
-const TOTAL_ROUNDS = 5;
+const TOTAL_ROUNDS = 1;
 
 export class CallbreakState {
   players: Player[];
@@ -152,7 +152,7 @@ export class CallbreakState {
 
     this.playedCards.push({ player: playerId, card: card });
     this.playerCards[playerId] = this.playerCards[playerId].filter(
-      (c) => c !== card,
+      (c) => c !== card
     );
 
     // The turn advances, but the trick is not resolved automatically.
@@ -167,7 +167,7 @@ export class CallbreakState {
     if (this.playedCards.length === 0) return true;
     const leadingSuit = getSuit(this.playedCards[0].card);
     const playerHasLeadingSuit = playerHand.some(
-      (c) => getSuit(c) === leadingSuit,
+      (c) => getSuit(c) === leadingSuit
     );
     if (playerHasLeadingSuit) return getSuit(cardToPlay) === leadingSuit;
     const playerHasTrump = playerHand.some((c) => getSuit(c) === TRUMP_SUIT);
@@ -180,7 +180,7 @@ export class CallbreakState {
       const canPlayHigherTrump = playerHand.some(
         (c) =>
           getSuit(c) === TRUMP_SUIT &&
-          getRankValue(c) > highestTrumpInTrickValue,
+          getRankValue(c) > highestTrumpInTrickValue
       );
       return !canPlayHigherTrump;
     }

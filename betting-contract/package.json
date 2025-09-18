@@ -3,7 +3,8 @@
   "license": "ISC",
   "scripts": {
     "build": "anchor build",
-    "postbuild": "cp target/idl/betting_contract.json ../betting-contract-idl/idl.json && cp target/types/betting_contract.ts ../betting-contract-idl/betting_contract.ts",
+    "postbuild": "cp target/idl/betting_contract.json ../betting-contract-idl/src/idl.json && cp target/types/betting_contract.ts ../betting-contract-idl/src/betting_contract.ts",
+    "deploy": "pnpm build && pnpm --filter betting-contract-idl build",
     "lint:fix": "prettier */*.js \"*/**/*{.js,.ts}\" -w",
     "lint": "prettier */*.js \"*/**/*{.js,.ts}\" --check"
   },
