@@ -24,7 +24,7 @@ class RoomService extends EventEmitter {
     return RoomService.instance;
   }
 
-  connect(id: string, name: string, roomId: string, noCreate: boolean = false) {
+  connect(id: string, name: string, roomId: string, noCreate: boolean = false, roomFee: number = 0) {
     if (this.connection) return;
 
     this.status = "connecting";
@@ -36,6 +36,7 @@ class RoomService extends EventEmitter {
       name,
       roomId,
       noCreate: noCreate.toString(),
+      roomFee: roomFee.toString(),
     }).toString();
 
     this.connection = new WebSocket(

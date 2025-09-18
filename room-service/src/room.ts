@@ -19,6 +19,7 @@ export class Room extends EventEmitter {
 		public readonly id: string,
 		private readonly gameFactory: GameFactory,
 		private readonly botFactory: BotFactory,
+		public readonly roomFee: number,
 		readonly onEmpty: () => void,
 	) {
 		super();
