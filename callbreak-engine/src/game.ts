@@ -35,6 +35,16 @@ export class CallbreakGame extends Game {
     this.emit("send", playerId, "turnTimer", {
       msLeft: this.remainingTimeMs(),
     });
+
+    if (this.currentPlayerId() === playerId) {
+      if (this.state.phase === "bidding") {
+        this.emit("send", playerId, "getBid", {});
+      } else if (this.state.phase === "playing") {
+        this.emit("send", playerId, "getCard", {
+          playedCards: this.state.playedCards,
+        });
+      }
+    }
   }
 
   public allowStart(): null | string {
