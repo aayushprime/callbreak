@@ -22,7 +22,7 @@ importers:
     dependencies:
       '@coral-xyz/anchor':
         specifier: ^0.31.1
-        version: 0.31.1(typescript@5.9.2)
+        version: 0.31.1(bufferutil@4.0.9)(typescript@5.9.2)(utf-8-validate@5.0.10)
       uuid:
         specifier: ^13.0.0
         version: 13.0.0
@@ -58,6 +58,12 @@ importers:
         specifier: ^5.7.3
         version: 5.9.2
 
+  betting-contract-idl:
+    devDependencies:
+      typescript:
+        specifier: ^5.4.5
+        version: 5.9.2
+
   callbreak-engine:
     dependencies:
       events:
@@ -76,6 +82,9 @@ importers:
 
   callbreak-ui:
     dependencies:
+      '@coral-xyz/anchor':
+        specifier: ^0.31.1
+        version: 0.31.1(bufferutil@4.0.9)(typescript@5.9.2)(utf-8-validate@5.0.10)
       '@solana/wallet-adapter-base':
         specifier: ^0.9.23
         version: 0.9.27(@solana/web3.js@1.98.4(bufferutil@4.0.9)(typescript@5.9.2)(utf-8-validate@5.0.10))
@@ -91,6 +100,9 @@ importers:
       '@solana/web3.js':
         specifier: ^1.91.4
         version: 1.98.4(bufferutil@4.0.9)(typescript@5.9.2)(utf-8-validate@5.0.10)
+      betting-contract-idl:
+        specifier: workspace:*
+        version: link:../betting-contract-idl
       callbreak-engine:
         specifier: workspace:*
         version: link:../callbreak-engine
@@ -161,6 +173,15 @@ importers:
 
   server:
     dependencies:
+      '@coral-xyz/anchor':
+        specifier: ^0.31.1
+        version: 0.31.1(bufferutil@4.0.9)(typescript@5.9.2)(utf-8-validate@5.0.10)
+      '@solana/web3.js':
+        specifier: ^1.98.4
+        version: 1.98.4(bufferutil@4.0.9)(typescript@5.9.2)(utf-8-validate@5.0.10)
+      betting-contract-idl:
+        specifier: workspace:*
+        version: link:../betting-contract-idl
       callbreak-engine:
         specifier: workspace:*
         version: link:../callbreak-engine
@@ -6178,10 +6199,10 @@ snapshots:
 
   '@coral-xyz/anchor-errors@0.31.1': {}
 
-  '@coral-xyz/anchor@0.31.1(typescript@5.9.2)':
+  '@coral-xyz/anchor@0.31.1(bufferutil@4.0.9)(typescript@5.9.2)(utf-8-validate@5.0.10)':
     dependencies:
       '@coral-xyz/anchor-errors': 0.31.1
-      '@coral-xyz/borsh': 0.31.1(@solana/web3.js@1.98.4(typescript@5.9.2))
+      '@coral-xyz/borsh': 0.31.1(@solana/web3.js@1.98.4(bufferutil@4.0.9)(typescript@5.9.2)(utf-8-validate@5.0.10))
       '@noble/hashes': 1.8.0
       '@solana/web3.js': 1.98.4(bufferutil@4.0.9)(typescript@5.9.2)(utf-8-validate@5.0.10)
       bn.js: 5.2.2
@@ -6199,7 +6220,7 @@ snapshots:
       - typescript
       - utf-8-validate
 
-  '@coral-xyz/borsh@0.31.1(@solana/web3.js@1.98.4(typescript@5.9.2))':
+  '@coral-xyz/borsh@0.31.1(@solana/web3.js@1.98.4(bufferutil@4.0.9)(typescript@5.9.2)(utf-8-validate@5.0.10))':
     dependencies:
       '@solana/web3.js': 1.98.4(bufferutil@4.0.9)(typescript@5.9.2)(utf-8-validate@5.0.10)
       bn.js: 5.2.2

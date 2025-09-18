@@ -6,7 +6,7 @@ import { Popup } from "./Popup";
 interface MultiplayerPopupProps {
   isOpen: boolean;
   onClose: () => void;
-  onJoinRoom: (roomCode: string) => void;
+  onJoinRoom: (roomCode: string, roomFee: number) => void;
   onCreateRoom: (roomFee: number) => void;
   status: string;
   availableRooms: { roomCode: string; roomFee: number; playerCount: number }[];
@@ -22,10 +22,13 @@ export function MultiplayerPopup({
 }: MultiplayerPopupProps) {
   const [activeTab, setActiveTab] = useState("join");
   const [roomCode, setRoomCode] = useState("");
-  const [roomFee, setRoomFee] = useState(0);
+  const [roomFee, setRoomFee] = useState(0.1);
 
   const handleJoin = () => {
-    onJoinRoom(roomCode);
+    const room = availableRooms.find((r) => r.roomCode === roomCode);
+    if (room) {
+      onJoinRoom(roomCode, room.roomFee);
+    }
   };
 
   const handleCreate = () => {
@@ -102,7 +105,7 @@ export function MultiplayerPopup({
                       <td className="py-2">{room.playerCount}/4</td>
                       <td className="py-2">
                         <Button
-                          onClick={() => onJoinRoom(room.roomCode)}
+                          onClick={() => onJoinRoom(room.roomCode, room.roomFee)}
                           title="Join"
                           disabled={status === "connecting"}
                           className="bg-green-500 hover:bg-green-600 active:bg-green-700 text-white font-semibold px-4 py-1 transition"
@@ -146,3 +149,4 @@ export function MultiplayerPopup({
     </Popup>
   );
 }
+

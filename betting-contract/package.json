@@ -1,8 +1,27 @@
 {
+  "name": "betting-contract",
   "license": "ISC",
   "scripts": {
+    "build": "anchor build",
+    "postbuild": "cp target/idl/betting_contract.json ../betting-contract-idl/idl.json && cp target/types/betting_contract.ts ../betting-contract-idl/betting_contract.ts",
     "lint:fix": "prettier */*.js \"*/**/*{.js,.ts}\" -w",
     "lint": "prettier */*.js \"*/**/*{.js,.ts}\" --check"
+  },
+  "types": "target/types/betting_contract.ts",
+  "files": [
+    "target/idl/betting_contract.json",
+    "target/idl/betting_contract.d.ts",
+    "target/types/betting_contract.ts"
+  ],
+  "exports": {
+    ".": {
+      "import": "./target/types/betting_contract.ts",
+      "types": "./target/types/betting_contract.ts"
+    },
+    "./idl": {
+      "import": "./target/idl/betting_contract.json",
+      "types": "./target/idl/betting_contract.d.ts"
+    }
   },
   "dependencies": {
     "@coral-xyz/anchor": "^0.31.1",

@@ -1,6 +1,6 @@
 "use client";
 import Image from "next/image";
-import React, { useRef, useState, useEffect } from "react";
+import React, { useRef, useState, useEffect, useCallback } from "react";
 import { Button } from "@/components/ui/Button";
 import { useGame } from "@/contexts/GameContext";
 import { useToast } from "@/contexts/ToastContext";
@@ -11,7 +11,14 @@ import { usePlayerName } from "@/hooks/usePlayerName";
 import { MultiplayerPopup } from "@/components/ui/MultiplayerPopup";
 import { useConnection, useWallet } from "@solana/wallet-adapter-react";
 import { useWalletModal } from "@solana/wallet-adapter-react-ui";
-import { LAMPORTS_PER_SOL } from "@solana/web3.js";
+import {
+  LAMPORTS_PER_SOL,
+  PublicKey,
+  SystemProgram,
+  Transaction,
+} from "@solana/web3.js";
+import { Program, AnchorProvider, web3 } from "@coral-xyz/anchor";
+import { idl, BettingContract } from "betting-contract-idl";
 
 const UserProfile = () => {
   const { publicKey } = useWallet();
@@ -83,7 +90,9 @@ export function MainScreen() {
   const { setScene } = useGame();
   const { addToast } = useToast();
   const { status } = roomState;
-  const { connected } = useWallet();
+  const { connected, publicKey, signTransaction, signAllTransactions } =
+    useWallet();
+  const { connection } = useConnection();
   const { setVisible } = useWalletModal();
 
   const [isMultiplayerPopupOpen, setMultiplayerPopupOpen] = useState(false);
@@ -91,36 +100,127 @@ export function MainScreen() {
 
   const pathname = usePathname();
 
+  const pendingJoinRef = useRef<{
+    roomId: string;
+    roomFee: number;
+    isJoin: boolean;
+  } | null>(null);
+
+  const getProvider = () => {
+    if (!publicKey || !signTransaction || !signAllTransactions)
+      throw new Error("Wallet not connected");
+    const provider = new AnchorProvider(
+      connection,
+      { publicKey, signTransaction, signAllTransactions },
+      { preflightCommitment: "processed" }
+    );
+    return provider;
+  };
+
+  const joinMatch = async (matchId: string, roomFee: number) => {
+    if (!publicKey) {
+      addToast("Please connect your wallet first.", { color: "red" });
+      return false;
+    }
+    try {
+      const provider = getProvider();
+      const program = new Program(idl as BettingContract, provider);
+
+      const [matchAccount] = await PublicKey.findProgramAddress(
+        [Buffer.from("match"), Buffer.from(matchId)],
+        program.programId
+      );
+
+      await program.methods
+        .joinMatch(matchId)
+        .accounts({
+          player: publicKey,
+          matchAccount,
+          systemProgram: SystemProgram.programId,
+        })
+        .rpc();
+
+      addToast("Successfully joined match!", { color: "green" });
+      return true;
+    } catch (err: any) {
+      addToast(err.message, { color: "red" });
+      return false;
+    }
+  };
+
+  const fetchRooms = useCallback(() => {
+    if (!process.env.NEXT_PUBLIC_BACKEND_URL) {
+      addToast("Backend URL is not configured.");
+      return;
+    }
+    fetch(`http://${process.env.NEXT_PUBLIC_BACKEND_URL}/api/rooms`)
+      .then((res) => {
+        if (!res.ok) {
+          throw new Error("Failed to fetch rooms");
+        }
+        return res.json();
+      })
+      .then((data) => {
+        setAvailableRooms(data);
+      })
+      .catch((err) => {
+        addToast(err.message);
+      });
+  }, [addToast]);
+
   useEffect(() => {
     if (isMultiplayerPopupOpen && connected) {
-      if (!process.env.NEXT_PUBLIC_BACKEND_URL) {
-        addToast("Backend URL is not configured.");
-        return;
-      }
-      fetch(`http://${process.env.NEXT_PUBLIC_BACKEND_URL}/api/rooms`)
-        .then((res) => {
-          if (!res.ok) {
-            throw new Error("Failed to fetch rooms");
-          }
-          return res.json();
-        })
-        .then((data) => {
-          setAvailableRooms(data);
-        })
-        .catch((err) => {
-          addToast(err.message);
-        });
+      fetchRooms(); // Fetch immediately on open
+      const interval = setInterval(fetchRooms, 3000);
+      return () => clearInterval(interval);
     }
-  }, [isMultiplayerPopupOpen, connected, addToast]);
+  }, [isMultiplayerPopupOpen, connected, fetchRooms]);
 
   useEffect(() => {
     const pathParts = pathname.split("/").filter(Boolean);
-    if (pathParts.length === 2 && playerName && !roomState.manualDisconnect) {
+    if (
+      pathParts.length === 2 &&
+      playerName &&
+      !roomState.manualDisconnect &&
+      publicKey
+    ) {
       const [roomType, roomId] = pathParts;
-      const isLocal = roomType === "local";
-      dispatch({ type: "SET_ROOM", payload: { id: playerName, name: playerName, roomId, isLocal } });
+      if (roomType === "multi") {
+        getMatchAccount(roomId).then((matchAccount) => {
+          if (
+            matchAccount &&
+            matchAccount.players
+              .map((p: PublicKey) => p.toBase58())
+              .includes(publicKey.toBase58())
+          ) {
+            const isLocal = false;
+            dispatch({
+              type: "SET_ROOM",
+              payload: {
+                id: playerName,
+                name: playerName,
+                roomId,
+                isLocal,
+              },
+            });
+          } else {
+            addToast("You are not a player in this match.", { color: "red" });
+            window.history.pushState({}, "", "/");
+          }
+        });
+      } else if (roomType === "local") {
+        dispatch({
+          type: "SET_ROOM",
+          payload: {
+            id: playerName,
+            name: playerName,
+            roomId,
+            isLocal: true,
+          },
+        });
+      }
     }
-  }, [pathname, playerName, dispatch, roomState.manualDisconnect]);
+  }, [pathname, playerName, dispatch, roomState.manualDisconnect, publicKey]);
 
   useEffect(() => {
     const pathParts = pathname.split("/").filter(Boolean);
@@ -130,13 +230,27 @@ export function MainScreen() {
   }, [pathname, roomService]);
 
   useEffect(() => {
-    const handleOpen = () => {
+    const handleOpen = async () => {
       const roomType = roomState.isLocal ? "local" : "multi";
       window.history.pushState({}, "", `/${roomType}/${roomState.roomId}`);
       if (roomState.isLocal) {
         setScene("game");
       } else {
-        setScene("lobby");
+        if (pendingJoinRef.current) {
+          const { roomId, roomFee } = pendingJoinRef.current;
+          const success = await joinMatch(roomId, roomFee);
+
+          if (success) {
+            setScene("lobby");
+          } else {
+            addToast("Failed to join match.", { color: "red" });
+            roomService.disconnect();
+            dispatch({ type: "RESET" });
+          }
+          pendingJoinRef.current = null;
+        } else {
+          setScene("lobby");
+        }
       }
     };
 
@@ -155,23 +269,84 @@ export function MainScreen() {
     };
   }, [roomState, setScene, addToast, dispatch, roomService]);
 
-  const handleCreateRoom = (roomFee: number) => {
-    const newRoomId = "G-" + generateRandomCode();
-    dispatch({ type: "SET_ROOM", payload: { id: playerName, name: playerName, roomId: newRoomId, isLocal: false } });
-    roomService.connect(playerName, playerName, newRoomId, false, roomFee);
-    setMultiplayerPopupOpen(false);
+  const getMatchAccount = async (matchId: string) => {
+    try {
+      const provider = getProvider();
+      const program = new Program(idl as any, provider);
+      const matchPda = new PublicKey(matchId);
+      const matchAccount = await (program.account as any).matchAccount.fetch(
+        matchPda
+      );
+      return matchAccount;
+    } catch (error) {
+      console.error("Failed to fetch match account:", error);
+      return null;
+    }
   };
 
-  const handleJoinRoom = (roomCode: string) => {
+  const handleCreateRoom = async (roomFee: number) => {
+    if (!publicKey) {
+      addToast("Please connect your wallet first.", { color: "red" });
+      return;
+    }
+    try {
+      const res = await fetch(
+        `http://${process.env.NEXT_PUBLIC_BACKEND_URL}/api/rooms`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ roomFee, host: publicKey.toBase58() }),
+        }
+      );
+      if (!res.ok) {
+        throw new Error(await res.text());
+      }
+      const { roomId } = await res.json();
+
+      pendingJoinRef.current = { roomId, roomFee, isJoin: false };
+      dispatch({
+        type: "SET_ROOM",
+        payload: {
+          id: playerName,
+          name: playerName,
+          roomId,
+          isLocal: false,
+        },
+      });
+      roomService.connect(playerName, playerName, roomId, false, roomFee);
+      setMultiplayerPopupOpen(false);
+    } catch (error: any) {
+      addToast(`Failed to create room: ${error.message}`, { color: "red" });
+    }
+  };
+
+  const handleJoinRoom = (roomCode: string, roomFee: number) => {
     if (!roomCode) return;
-    dispatch({ type: "SET_ROOM", payload: { id: playerName, name: playerName, roomId: roomCode, isLocal: false } });
+    pendingJoinRef.current = { roomId: roomCode, roomFee, isJoin: true };
+    dispatch({
+      type: "SET_ROOM",
+      payload: {
+        id: playerName,
+        name: playerName,
+        roomId: roomCode,
+        isLocal: false,
+      },
+    });
     roomService.connect(playerName, playerName, roomCode, true);
     setMultiplayerPopupOpen(false);
   };
 
   const handleSinglePlayer = () => {
     const newRoomId = "L-" + generateRandomCode();
-    dispatch({ type: "SET_ROOM", payload: { id: playerName, name: playerName, roomId: newRoomId, isLocal: true } });
+    dispatch({
+      type: "SET_ROOM",
+      payload: {
+        id: playerName,
+        name: playerName,
+        roomId: newRoomId,
+        isLocal: true,
+      },
+    });
   };
 
   const handleMultiplayer = () => {
@@ -226,5 +401,3 @@ export function MainScreen() {
     </div>
   );
 }
-
-

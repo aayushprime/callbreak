@@ -8,7 +8,21 @@ import {
 import { CallbreakRoom } from "./room.js";
 import { Player, GameFactory, BotFactory, Room } from "room-service";
 import { rooms } from "./registry.js";
-import { getRooms } from "./api.js";
+import { getRooms, createRoom, getMatchAccount } from "./api.js";
+import { PublicKey, Connection, Keypair } from "@solana/web3.js";
+import {
+  Program,
+  AnchorProvider,
+  Wallet,
+  IdlAccounts,
+} from "@coral-xyz/anchor";
+
+import type { BettingContract } from "betting-contract-idl";
+import {idl} from "betting-contract-idl"
+import keys from "./keys.json" with { type: "json" };
+
+// Derive the MatchAccount type from the IDL
+type MatchAccount = IdlAccounts<BettingContract>["matchAccount"];
 
 interface UserData {
   playerId: string | null;
@@ -30,21 +44,48 @@ type CustomWebSocket = WebSocket<UserData> & {
 const gameFactory: GameFactory = (players) => new CallbreakGame(players);
 const botFactory: BotFactory = (player) => new CallbreakBot(player);
 
+// This is a mock env for the api.ts functions.
+// In a real-world scenario, you'd load this from a .env file or secrets manager.
+const env = {
+  SOLANA_RPC_URL: "http://127.0.0.1:8899",
+  SERVER_WALLET_PRIVATE_KEY:
+    process.env.SERVER_WALLET_PRIVATE_KEY || JSON.stringify(keys.host),
+};
+
+const connection = new Connection(env.SOLANA_RPC_URL, "confirmed");
+const privateKeyBytes = JSON.parse(env.SERVER_WALLET_PRIVATE_KEY);
+const serverKeypair = Keypair.fromSecretKey(new Uint8Array(privateKeyBytes));
+const wallet = new Wallet(serverKeypair);
+
+const provider = new AnchorProvider(connection, wallet, {
+  commitment: "confirmed",
+});
+const program = new Program<BettingContract>(idl as any, provider);
+
+const withCors = (res: HttpResponse) => {
+  res.writeHeader("Access-Control-Allow-Origin", "*");
+  res.writeHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+  res.writeHeader("Access-Control-Allow-Headers", "Content-Type");
+  return res;
+};
+
 class RoomManager {
   getOrCreateRoom(
     roomId: string,
     gameFactory: GameFactory,
-    roomFee: number,
+    roomFee: number
   ): { room: Room; isNew: boolean } {
     let isNew = false;
 
     if (!rooms.has(roomId)) {
+      const isLocal = roomId.startsWith("L-");
       const room = new CallbreakRoom(
         roomId,
         gameFactory,
         botFactory,
         roomFee,
         () => rooms.delete(roomId),
+        isLocal
       );
       rooms.set(roomId, room);
       isNew = true;
@@ -61,17 +102,47 @@ export class ServerController {
   constructor(port: number) {
     const app = uWS
       .App({})
+      .options("/api/*", (res, req) => {
+        withCors(res).end();
+      })
       .get("/api/rooms", (res, req) => {
+        console.log("GET ");
         const rooms = getRooms();
-        res.writeHeader("Content-Type", "application/json");
-        res.end(JSON.stringify(rooms));
+        withCors(res)
+          .writeHeader("Content-Type", "application/json")
+          .end(JSON.stringify(rooms));
+      })
+      .post("/api/rooms", (res, req) => {
+        res.onData(async (ab, isLast) => {
+          if (isLast) {
+            try {
+              const body = JSON.parse(Buffer.from(ab).toString());
+              const { roomFee, host } = body;
+              if (!roomFee || !host) {
+                res.writeStatus("400 Bad Request");
+                withCors(res).end("Missing roomFee or host");
+                return;
+              }
+              const roomId = await createRoom(program, roomFee, host);
+              withCors(res)
+                .writeHeader("Content-Type", "application/json")
+                .end(JSON.stringify({ roomId }));
+            } catch (error: any) {
+              res.writeStatus("500 Internal Server Error");
+              withCors(res).end(error.message);
+            }
+          }
+        });
+        res.onAborted(() => {
+          console.log("Request aborted");
+        });
       })
       .ws<UserData>("/*", {
         upgrade: (res: HttpResponse, req: HttpRequest, context) => {
           const secWebSocketKey = req.getHeader("sec-websocket-key");
           const secWebSocketProtocol = req.getHeader("sec-websocket-protocol");
           const secWebSocketExtensions = req.getHeader(
-            "sec-websocket-extensions",
+            "sec-websocket-extensions"
           );
 
           const params = new URLSearchParams(req.getQuery());
@@ -86,55 +157,54 @@ export class ServerController {
             secWebSocketKey,
             secWebSocketProtocol,
             secWebSocketExtensions,
-            context,
+            context
           );
         },
 
-        /* `open` handler validates, sends a specific error message on failure, then closes. */
-        open: (ws: WebSocket<UserData>) => {
+        open: async (ws: WebSocket<UserData>) => {
           const { playerId, roomId, name, noCreate } = ws.getUserData();
-
-          // --- VALIDATION BLOCK ---
-
-          // 1. Check for missing credentials.
           if (!playerId || !roomId || !name) {
             const reason = "Missing credentials";
-            console.log(`Validation failed: ${reason}.`, {
-              playerId,
-              roomId,
-              name,
-            });
-            // Send a structured error message first
             ws.send(JSON.stringify({ type: "error", message: reason }));
-            // Then close the connection
             ws.end(4000, reason);
             return;
           }
-
-          // 2. Check if player ID is already in use.
           if (this.connectionMap.has(playerId)) {
             const reason = "Player ID already connected";
-            console.log(`Validation failed: ${reason}:`, playerId);
             ws.send(JSON.stringify({ type: "error", message: reason }));
             ws.end(4001, reason);
             return;
           }
-
-          // 3. Check if joining a non-existent room is disallowed.
           const room = rooms.get(roomId);
           if (!room && noCreate) {
             const reason = "Room not found";
-            console.log(
-              `Validation failed: ${reason} and creation is disabled.`,
-            );
             ws.send(JSON.stringify({ type: "error", message: reason }));
             ws.end(4002, reason);
             return;
           }
 
-          // --- END VALIDATION ---
+          if (!roomId.startsWith("L-")) {
+            const matchAccount = (await getMatchAccount(
+              program,
+              roomId
+            )) as MatchAccount;
+            if (!matchAccount) {
+              const reason = "On-chain match not found";
+              ws.send(JSON.stringify({ type: "error", message: reason }));
+              ws.end(4004, reason);
+              return;
+            }
+            const playerPubkeys = matchAccount.players.map((p: PublicKey) =>
+              p.toBase58()
+            );
+            if (!playerPubkeys.includes(playerId)) {
+              const reason = "You are not a player in this on-chain match";
+              ws.send(JSON.stringify({ type: "error", message: reason }));
+              ws.end(4005, reason);
+              return;
+            }
+          }
 
-          // If all checks pass, proceed with the connection setup.
           ws.send(JSON.stringify({ type: "open" }));
           this.onConnection(ws);
         },
@@ -142,9 +212,8 @@ export class ServerController {
         message: (
           ws: WebSocket<UserData>,
           message: ArrayBuffer,
-          isBinary: boolean,
+          isBinary: boolean
         ) => {
-          // This will only be called for fully established connections, not for the error messages above.
           const { player, room } = (ws as CustomWebSocket).attachment;
           this.onMessage(player, room, message);
         },
@@ -152,54 +221,37 @@ export class ServerController {
         close: (
           ws: WebSocket<UserData>,
           code: number,
-          message: ArrayBuffer,
+          message: ArrayBuffer
         ) => {
           const attachment = (ws as CustomWebSocket).attachment;
           if (attachment) {
             const { player, room } = attachment;
             this.onClose(player, room);
-          } else {
-            console.log(`Connection closed pre-attachment. Code: ${code}`);
           }
         },
       });
-    app.listen("0.0.0.0", 8080, (socket) => {
+    app.listen(port, (socket) => {
       if (socket) {
-        console.log(`Server started on 0.0.0.0 ${port}`);
-      } else {
-        console.log(`Failed to start server on port ${port}`);
-      }
-    });
-    app.listen("::", port, (socket) => {
-      if (socket) {
-        console.log(`Server started on :: ${port}`);
+        console.log(`Server started on port ${port}`);
       } else {
         console.log(`Failed to start server on port ${port}`);
       }
     });
   }
 
-  /**
-   * Handles a new, validated WebSocket connection.
-   */
   private onConnection(ws: WebSocket<UserData>): void {
     const { playerId, roomId, name, roomFee } = ws.getUserData();
-
     const player = new Player(playerId!, name!, "US");
     this.connectionMap.set(player.id, ws);
-
     const { room, isNew } = this.roomManager.getOrCreateRoom(
       roomId!,
       gameFactory,
-      roomFee,
+      roomFee
     );
-
     if (isNew) {
       this.setupRoomListeners(room);
     }
-
     (ws as CustomWebSocket).attachment = { player, room };
-
     room.join(player);
   }
 
@@ -209,34 +261,30 @@ export class ServerController {
       (scope: "room" | "game", type: string, payload: any) => {
         const message: ServerMessage = { scope, type, payload };
         const stringifiedMessage = JSON.stringify(message);
-
         room.players.forEach((player: Player) => {
           const conn = this.connectionMap.get(player.id);
           if (conn) {
             conn.send(stringifiedMessage);
           }
         });
-      },
+      }
     );
-
     room.on(
       "send",
       (
         scope: "room" | "game",
         playerId: string,
         type: string,
-        payload: any,
+        payload: any
       ) => {
         const message: ServerMessage = { scope, type, payload };
         const stringifiedMessage = JSON.stringify(message);
-
         const conn = this.connectionMap.get(playerId);
         if (conn) {
           conn.send(stringifiedMessage);
         }
-      },
+      }
     );
-
     room.on("close", (playerId: string, reason: string) => {
       const conn = this.connectionMap.get(playerId);
       if (conn) {

@@ -21,6 +21,7 @@ export class Room extends EventEmitter {
 		private readonly botFactory: BotFactory,
 		public readonly roomFee: number,
 		readonly onEmpty: () => void,
+		public readonly isLocal: boolean,
 	) {
 		super();
 	}
@@ -88,7 +89,7 @@ export class Room extends EventEmitter {
 			hostId: this.hostId,
 		});
 
-		if (!player.isBot) {
+		if (this.isLocal && !player.isBot) {
 			// join 3 bots
 			while (this.players.size < 4) {
 				const botId = `bot-${this.players.size + 1}`;
@@ -161,6 +162,8 @@ export class Room extends EventEmitter {
 			emitBroadcast('room', 'gameEnded', { reason });
 			Object.values(bots).forEach((b) => b.onGameMessage({ type: 'gameEnded', payload: { reason } }));
 		});
+
+
 
 		this.game.on('error', (player: { id: string }, message: string) => {
 			emitSend('game', player.id, 'error', { message });

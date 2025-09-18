@@ -10,8 +10,11 @@
     "deploy": "wrangler deploy src/index.ts"
   },
   "dependencies": {
+    "@coral-xyz/anchor": "^0.31.1",
+    "@solana/web3.js": "^1.98.4",
     "callbreak-engine": "workspace:*",
     "room-service": "workspace:*",
+    "betting-contract-idl": "workspace:*",
     "uwebsockets.js": "uNetworking/uWebSockets.js#v20.43.0"
   },
   "devDependencies": {

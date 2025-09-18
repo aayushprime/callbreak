@@ -1,0 +1,17 @@
+{
+  "name": "betting-contract-idl",
+  "version": "0.0.0",
+  "license": "MIT",
+  "type": "module",
+  "main": "./es6/index.js",
+  "types": "./es6/index.d.ts",
+  "files": [
+    "es6"
+  ],
+  "scripts": {
+    "build": "tsc && cp src/idl.json es6/idl.json"
+  },
+  "devDependencies": {
+    "typescript": "^5.4.5"
+  }
+}

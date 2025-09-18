@@ -19,6 +19,6 @@
     "resolveJsonModule": true,
     "strictNullChecks": true
   },
-  "include": ["src/**/*", "environment.d.ts"],
+  "include": ["src/**/*.ts"],
   "exclude": ["node_modules", "**/*.spec.ts"]
 }

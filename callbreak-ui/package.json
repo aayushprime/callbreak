@@ -9,19 +9,21 @@
     "lint": "next lint"
   },
   "dependencies": {
-    "clsx": "^2.1.1",
-    "callbreak-engine": "workspace:*",
-    "room-service": "workspace:*",
-    "framer-motion": "^12.23.12",
-    "next": "15.4.6",
-    "react": "19.1.0",
-    "react-dom": "19.1.0",
-    "tailwind-merge": "^3.3.1",
+    "@coral-xyz/anchor": "^0.31.1",
     "@solana/wallet-adapter-base": "^0.9.23",
     "@solana/wallet-adapter-react": "^0.15.35",
     "@solana/wallet-adapter-react-ui": "^0.9.35",
     "@solana/wallet-adapter-wallets": "^0.19.32",
-    "@solana/web3.js": "^1.91.4"
+    "@solana/web3.js": "^1.91.4",
+    "callbreak-engine": "workspace:*",
+    "betting-contract-idl": "workspace:*",
+    "clsx": "^2.1.1",
+    "framer-motion": "^12.23.12",
+    "next": "15.4.6",
+    "react": "19.1.0",
+    "react-dom": "19.1.0",
+    "room-service": "workspace:*",
+    "tailwind-merge": "^3.3.1"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
